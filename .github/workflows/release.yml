@@ -95,7 +95,7 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('windows/**/*.csproj') }}
@@ -104,7 +104,7 @@ jobs:
 
       - name: Cache Inno Setup
         id: cache-inno
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: C:\Program Files (x86)\Inno Setup 6
           key: ${{ runner.os }}-innosetup-6
