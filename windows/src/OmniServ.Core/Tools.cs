@@ -52,6 +52,10 @@ public static class Tools
     public static string? PhpExe(string version)    => Find(Path.Combine("php", version), "php.exe");
     public static string? PhpCgiExe(string version) => Find(Path.Combine("php", version), "php-cgi.exe");
 
+    /// <summary>Check if Microsoft Visual C++ 2015-2022 x64 Redistributable (vcruntime140.dll) is present in System32.</summary>
+    public static bool HasVcRedist() =>
+        File.Exists(Path.Combine(Environment.SystemDirectory, "vcruntime140.dll"));
+
     public static string? NginxExe() => Find("nginx", "nginx.exe");
     /// <summary>Installed nginx version parsed from its dir (…\nginx-1.31.2\…), or null.</summary>
     public static string? NginxVersion()

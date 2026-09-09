@@ -38,6 +38,24 @@
             </StackPanel>
         </Grid>
 
+        <!-- Setup Incomplete Banner -->
+        <Border x:Name="SetupBanner" Visibility="Collapsed" CornerRadius="8" Padding="14,12" BorderThickness="1"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <FontIcon Grid.Column="0" Glyph="&#xE7BA;" FontSize="18" Foreground="{ThemeResource SystemFillColorCautionBrush}" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="Local server stack is not fully installed" FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock x:Name="SetupBannerDetails" Text="Run the setup wizard to install Nginx, PHP, and database components." Opacity="0.7" FontSize="12"/>
+                </StackPanel>
+                <Button Grid.Column="2" Content="Run Setup Wizard" Click="RunSetupWizard_Click" Style="{StaticResource AccentButtonStyle}" VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
         <!-- status cards: Web Server / PHP / Database / Cache -->
         <Grid ColumnSpacing="12">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>

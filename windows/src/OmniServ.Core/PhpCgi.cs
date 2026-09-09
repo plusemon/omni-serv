@@ -97,6 +97,15 @@ public static class PhpCgi
     public static bool Start(string version)
     {
         if (Running(version)) return true;
+        if (!Tools.HasVcRedist())
+        {
+            try { Downloader.EnsureVcRedist(m => Heal($"php {version}: {m}")).GetAwaiter().GetResult(); }
+            catch (Exception ex)
+            {
+                Heal($"php {version}: Visual C++ Redistributable missing: {ex.Message}");
+                throw new BhException("Microsoft Visual C++ 2015-2022 Redistributable (vcruntime140.dll) is missing. Please install it.");
+            }
+        }
         // Always spawn php-cgi DIRECTLY (in this process). History: win-v1.0.38 thought "the WinUI GUI
         // can't spawn ionCube-capable workers" and delegated to a child omniserv.exe (__spawn-php). The
         // real cause was a stripped Path/SystemRoot, now rebuilt in SpawnOnce — and PROVEN: the app's own

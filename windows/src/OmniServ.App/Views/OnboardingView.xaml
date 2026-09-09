@@ -1,0 +1,470 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OmniServ.App.Views.OnboardingView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:local="using:OmniServ.App.Views"
+    xmlns:services="using:OmniServ.App.Services">
+
+    <UserControl.Resources>
+        <Style x:Key="StepCard" TargetType="Border">
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="18"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+        </Style>
+
+        <Style x:Key="SubCard" TargetType="Border">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="14"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorSecondaryBrush}"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <!-- Main container with max width for clean centered wizard layout -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel MaxWidth="760" HorizontalAlignment="Center" Margin="24,32,24,40" Spacing="24">
+
+                <!-- Header & Brand -->
+                <Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                        <Border Width="42" Height="42" CornerRadius="8" Background="{ThemeResource AccentFillColorDefaultBrush}">
+                            <FontIcon Glyph="&#xE774;" FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="OmniServ" FontSize="20" FontWeight="Bold"/>
+                            <TextBlock Text="Local Web Development Stack" FontSize="12" Opacity="0.65"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Button x:Name="SkipAllBtn" Content="Skip setup" Click="SkipAll_Click"
+                            HorizontalAlignment="Right" VerticalAlignment="Center" Opacity="0.75"/>
+                </Grid>
+
+                <!-- Stepper Tabs -->
+                <Border Style="{StaticResource StepCard}" Padding="8,10">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Step 1 Indicator -->
+                        <Border x:Name="Step1Pill" Grid.Column="0" CornerRadius="6" Padding="10,8"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                <FontIcon x:Name="Step1Icon" Glyph="&#xE762;" FontSize="13" Foreground="{ThemeResource AccentFillColorDefaultBrush}"/>
+                                <TextBlock Text="1. Stack" FontSize="13" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Step 2 Indicator -->
+                        <Border x:Name="Step2Pill" Grid.Column="1" CornerRadius="6" Padding="10,8">
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                <FontIcon x:Name="Step2Icon" Glyph="&#xE72E;" FontSize="13" Opacity="0.6"/>
+                                <TextBlock Text="2. Security" FontSize="13" Opacity="0.6"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Step 3 Indicator -->
+                        <Border x:Name="Step3Pill" Grid.Column="2" CornerRadius="6" Padding="10,8">
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                <FontIcon x:Name="Step3Icon" Glyph="&#xE896;" FontSize="13" Opacity="0.6"/>
+                                <TextBlock Text="3. Install" FontSize="13" Opacity="0.6"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Step 4 Indicator -->
+                        <Border x:Name="Step4Pill" Grid.Column="3" CornerRadius="6" Padding="10,8">
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                <FontIcon x:Name="Step4Icon" Glyph="&#xE73E;" FontSize="13" Opacity="0.6"/>
+                                <TextBlock Text="4. Ready" FontSize="13" Opacity="0.6"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- ════════════════════════════════════════════════════════════════ -->
+                <!-- STEP 1: CHOOSE STACK -->
+                <!-- ════════════════════════════════════════════════════════════════ -->
+                <StackPanel x:Name="Step1Panel" Spacing="20" Visibility="Visible">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Choose your local development stack" FontSize="24" FontWeight="SemiBold"/>
+                        <TextBlock Text="OmniServ downloads official, portable binaries directly to your machine. No system-wide pollution or registry clutter."
+                                   Opacity="0.7" TextWrapping="Wrap" FontSize="14"/>
+                    </StackPanel>
+
+                    <!-- Core Stack Selections Card -->
+                    <Border Style="{StaticResource StepCard}">
+                        <StackPanel Spacing="16">
+                            <TextBlock Text="Core Server Components" FontWeight="SemiBold" FontSize="16"/>
+
+                            <!-- Web Server -->
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="220"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="Web Server" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Listens on port 80 &amp; 443, handles SSL certificates and reverse proxying." Opacity="0.6" FontSize="12"/>
+                                </StackPanel>
+                                <ComboBox x:Name="WebServerCombo" Grid.Column="1" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                    <ComboBoxItem Content="Nginx (Recommended)"/>
+                                    <ComboBoxItem Content="Apache (.htaccess)"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <MenuFlyoutSeparator Margin="0,4"/>
+
+                            <!-- PHP Runtime -->
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="220"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <CheckBox x:Name="PhpCheck" Content="PHP Runtime" IsChecked="True" FontWeight="SemiBold"/>
+                                    <TextBlock Text="FastCGI worker pools with curl, mbstring, openssl, and mysql extensions enabled." Opacity="0.6" FontSize="12" Margin="28,0,0,0"/>
+                                </StackPanel>
+                                <ComboBox x:Name="PhpVersionCombo" Grid.Column="1" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                    <ComboBoxItem Content="PHP 8.4 (Latest)"/>
+                                    <ComboBoxItem Content="PHP 8.3"/>
+                                    <ComboBoxItem Content="PHP 8.2"/>
+                                    <ComboBoxItem Content="PHP 8.1"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <MenuFlyoutSeparator Margin="0,4"/>
+
+                            <!-- Database -->
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="220"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <CheckBox x:Name="DbCheck" Content="Database Engine" IsChecked="True" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Relational database listening on 127.0.0.1:3306 with passwordless root." Opacity="0.6" FontSize="12" Margin="28,0,0,0"/>
+                                </StackPanel>
+                                <ComboBox x:Name="DbEngineCombo" Grid.Column="1" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                    <ComboBoxItem Content="MariaDB (Recommended)"/>
+                                    <ComboBoxItem Content="Oracle MySQL"/>
+                                    <ComboBoxItem Content="PostgreSQL"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <MenuFlyoutSeparator Margin="0,4"/>
+
+                            <!-- HTTPS SSL -->
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <CheckBox x:Name="MkcertCheck" Content="Local HTTPS (mkcert)" IsChecked="True" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Generates local trusted SSL certificates for *.test domains automatically." Opacity="0.6" FontSize="12" Margin="28,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="Recommended" Opacity="0.5" FontSize="12" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Optional Developer Tools Card -->
+                    <Border Style="{StaticResource StepCard}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Optional Developer Tools" FontWeight="SemiBold" FontSize="16"/>
+                            <TextBlock Text="Select any extra services you would like ready out of the box." Opacity="0.6" FontSize="12"/>
+
+                            <Grid ColumnSpacing="12" RowSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <CheckBox x:Name="MailpitCheck" Grid.Row="0" Grid.Column="0" Content="Mailpit (Local email testing)"/>
+                                <CheckBox x:Name="RedisCheck" Grid.Row="0" Grid.Column="1" Content="Redis (In-memory cache)"/>
+                                <CheckBox x:Name="NodeCheck" Grid.Row="1" Grid.Column="0" Content="Node.js (fnm version manager)"/>
+                                <CheckBox x:Name="PythonCheck" Grid.Row="1" Grid.Column="1" Content="Python 3 (Portable interpreter)"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Sites Root Path Card -->
+                    <Border Style="{StaticResource StepCard}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Web Sites Root Directory" FontWeight="SemiBold"/>
+                            <TextBlock Text="Your projects and virtual host folders will live inside this directory." Opacity="0.6" FontSize="12"/>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="SitesRootBox" Grid.Column="0" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="Browse…" Click="BrowseSitesRoot_Click" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Navigation Actions -->
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+                        <Button Content="Skip for now" Click="SkipAll_Click"/>
+                        <Button Content="Continue ➔" Click="Step1Next_Click" Style="{StaticResource AccentButtonStyle}" Padding="24,8"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- ════════════════════════════════════════════════════════════════ -->
+                <!-- STEP 2: ANTIVIRUS & SECURITY -->
+                <!-- ════════════════════════════════════════════════════════════════ -->
+                <StackPanel x:Name="Step2Panel" Spacing="20" Visibility="Collapsed">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Antivirus &amp; System Readiness" FontSize="24" FontWeight="SemiBold"/>
+                        <TextBlock Text="Keep your local server stack running smoothly without false positive interruptions."
+                                   Opacity="0.7" TextWrapping="Wrap" FontSize="14"/>
+                    </StackPanel>
+
+                    <!-- Defender Card -->
+                    <Border Style="{StaticResource StepCard}">
+                        <StackPanel Spacing="16">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="48"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Width="44" Height="44" CornerRadius="8" Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}">
+                                    <FontIcon Glyph="&#xE72E;" FontSize="20" Foreground="{ThemeResource SystemFillColorCautionBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Text="Why Antivirus Exclusions Matter" FontWeight="SemiBold" FontSize="16"/>
+                                    <TextBlock Text="OmniServ downloads official server binaries (nginx, php-cgi, mysqld). Some antivirus scanners wrongly detect portable binaries as dropper tools and lock or delete them."
+                                               Opacity="0.7" TextWrapping="Wrap" FontSize="13"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Border Style="{StaticResource SubCard}">
+                                <StackPanel Spacing="12">
+                                    <Grid>
+                                        <TextBlock Text="Windows Defender Exclusion Status" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="AvStatusText" Text="Checking…" HorizontalAlignment="Right" Opacity="0.7" FontSize="12"/>
+                                    </Grid>
+
+                                    <TextBlock Text="Adding OmniServ's data and binary directories to Windows Defender ensures downloads complete reliably and servers start instantly."
+                                               Opacity="0.65" FontSize="12" TextWrapping="Wrap"/>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Button x:Name="AddAvExclusionsBtn" Click="AddAvExclusions_Click" Style="{StaticResource AccentButtonStyle}">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <FontIcon Glyph="&#xE72E;" FontSize="13"/>
+                                                <TextBlock Text="Add Defender exclusions"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <ProgressRing x:Name="AvBusy" IsActive="False" Width="18" Height="18" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="AvFeedbackText" Opacity="0.8" VerticalAlignment="Center" FontSize="12"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="Using a third-party antivirus (e.g. Bitdefender, ESET, Avast)? You can add the OmniServ home directory to its exclusions manually at any time."
+                                       Opacity="0.5" FontSize="12" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Navigation Actions -->
+                    <Grid>
+                        <Button Content="🠔 Back" Click="Step2Back_Click" HorizontalAlignment="Left"/>
+                        <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+                            <Button Content="Skip Defender step" Click="Step2Next_Click"/>
+                            <Button Content="Start Installation ➔" Click="Step2Next_Click" Style="{StaticResource AccentButtonStyle}" Padding="24,8"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- ════════════════════════════════════════════════════════════════ -->
+                <!-- STEP 3: DOWNLOAD & INSTALLATION PROGRESS -->
+                <!-- ════════════════════════════════════════════════════════════════ -->
+                <StackPanel x:Name="Step3Panel" Spacing="20" Visibility="Collapsed">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Installing OmniServ Stack" FontSize="24" FontWeight="SemiBold"/>
+                        <TextBlock Text="Fetching and setting up selected components using Microsoft-signed system tools."
+                                   Opacity="0.7" TextWrapping="Wrap" FontSize="14"/>
+                    </StackPanel>
+
+                    <!-- Overall Progress Card -->
+                    <Border Style="{StaticResource StepCard}">
+                        <StackPanel Spacing="12">
+                            <Grid>
+                                <TextBlock x:Name="OverallStatusText" Text="Preparing downloads…" FontWeight="SemiBold" FontSize="15"/>
+                                <TextBlock x:Name="OverallCountText" Text="0 of 0 completed" HorizontalAlignment="Right" Opacity="0.7" FontSize="13"/>
+                            </Grid>
+                            <ProgressBar x:Name="OverallProgressBar" Minimum="0" Maximum="100" Value="0" Height="8"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Components Progress List -->
+                    <ItemsControl x:Name="ComponentsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="services:OnboardingItem">
+                                <Border Style="{StaticResource StepCard}" Margin="0,0,0,10">
+                                    <Grid ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Item Icon -->
+                                        <Border Grid.Column="0" Width="38" Height="38" CornerRadius="6"
+                                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" VerticalAlignment="Center">
+                                            <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+
+                                        <!-- Item Info & Progress Bar -->
+                                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="14"/>
+                                            <TextBlock Text="{x:Bind Description}" Opacity="0.6" FontSize="12"/>
+
+                                            <!-- Active Progress Bar (visible during download) -->
+                                            <ProgressBar Value="{x:Bind Progress, Mode=OneWay}" Minimum="0" Maximum="100"
+                                                         Visibility="{x:Bind IsActive, Mode=OneWay}" Height="4" Margin="0,4,0,0"/>
+
+                                            <!-- Error message if failed -->
+                                            <TextBlock Text="{x:Bind ErrorMessage, Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                       FontSize="12" TextWrapping="Wrap" Visibility="{x:Bind IsFailed, Mode=OneWay}" Margin="0,2,0,0"/>
+                                        </StackPanel>
+
+                                        <!-- Right status & Retry button -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind StatusLabel, Mode=OneWay}" Opacity="0.7" FontSize="12" VerticalAlignment="Center"/>
+
+                                            <FontIcon Glyph="&#xE73E;" Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                      FontSize="16" Visibility="{x:Bind IsDone, Mode=OneWay}" VerticalAlignment="Center"/>
+
+                                            <Button Content="Retry" Tag="{x:Bind Key}" Click="RetryItem_Click"
+                                                    Visibility="{x:Bind IsFailed, Mode=OneWay}" Style="{StaticResource AccentButtonStyle}" Padding="12,4"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Expandable Terminal / Live Logs -->
+                    <muxc:Expander Header="Live Download &amp; Setup Logs" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}" Padding="12" CornerRadius="6">
+                            <ScrollViewer x:Name="LogScroll" MaxHeight="160">
+                                <TextBlock x:Name="LogOutputText" FontFamily="Consolas, Cascadia Code, Courier New" FontSize="11"
+                                           Opacity="0.8" TextWrapping="Wrap"/>
+                            </ScrollViewer>
+                        </Border>
+                    </muxc:Expander>
+
+                    <!-- Action Bar -->
+                    <Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Left">
+                            <Button x:Name="RetryAllBtn" Content="Retry failed items" Click="RetryAll_Click" Visibility="Collapsed"/>
+                            <Button x:Name="ContinueAnywayBtn" Content="Continue anyway" Click="ContinueAnyway_Click" Visibility="Collapsed"/>
+                        </StackPanel>
+
+                        <Button x:Name="Step3NextBtn" Content="Finish &amp; Continue ➔" Click="Step3Next_Click"
+                                Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Right" IsEnabled="False" Padding="24,8"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- ════════════════════════════════════════════════════════════════ -->
+                <!-- STEP 4: CELEBRATION & READY -->
+                <!-- ════════════════════════════════════════════════════════════════ -->
+                <StackPanel x:Name="Step4Panel" Spacing="24" Visibility="Collapsed">
+                    <!-- Hero Card -->
+                    <Border Style="{StaticResource StepCard}" Padding="28">
+                        <StackPanel Spacing="12" HorizontalAlignment="Center">
+                            <Border Width="64" Height="64" CornerRadius="32" Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
+                                    HorizontalAlignment="Center">
+                                <FontIcon Glyph="&#xE73E;" FontSize="28" Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+
+                            <TextBlock Text="OmniServ is Ready! 🎉" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Your local server stack is installed and configured. You can now serve websites and APIs with fast local domains."
+                                       Opacity="0.7" TextWrapping="Wrap" TextAlignment="Center" FontSize="14" MaxWidth="500"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Summary Card -->
+                    <Border Style="{StaticResource StepCard}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Active Configuration" FontWeight="SemiBold" FontSize="16"/>
+
+                            <Grid RowSpacing="8" ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Web Server" Opacity="0.6"/>
+                                <TextBlock x:Name="SummWebServer" Grid.Row="0" Grid.Column="1" Text="Nginx (Port 80 / 443 HTTPS)" FontWeight="SemiBold"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="PHP Runtime" Opacity="0.6"/>
+                                <TextBlock x:Name="SummPhp" Grid.Row="1" Grid.Column="1" Text="PHP 8.4 (FastCGI)" FontWeight="SemiBold"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Database" Opacity="0.6"/>
+                                <TextBlock x:Name="SummDb" Grid.Row="2" Grid.Column="1" Text="MariaDB (127.0.0.1:3306)" FontWeight="SemiBold"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Sites Folder" Opacity="0.6"/>
+                                <TextBlock x:Name="SummSitesFolder" Grid.Row="3" Grid.Column="1" Text="~/OmniServ/www" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Quick Action Cards -->
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="16"
+                                Click="CreateSite_Click" Style="{StaticResource AccentButtonStyle}">
+                            <StackPanel Spacing="4">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE710;" FontSize="14"/>
+                                    <TextBlock Text="Create Your First Site" FontWeight="SemiBold" FontSize="15"/>
+                                </StackPanel>
+                                <TextBlock Text="Add WordPress, Laravel, PHP or static site" Opacity="0.8" FontSize="12"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="16"
+                                Click="OpenDashboard_Click">
+                            <StackPanel Spacing="4">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE80F;" FontSize="14"/>
+                                    <TextBlock Text="Open Dashboard" FontWeight="SemiBold" FontSize="15"/>
+                                </StackPanel>
+                                <TextBlock Text="View service metrics, sites and server controls" Opacity="0.6" FontSize="12"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

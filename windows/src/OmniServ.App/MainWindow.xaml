@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:views="using:OmniServ.App.Views"
     Title="OmniServ">
 
     <Grid>
@@ -27,5 +28,8 @@
 
             <Frame x:Name="ContentFrame"/>
         </muxc:NavigationView>
+
+        <!-- Dedicated Full-Window Onboarding Wizard -->
+        <views:OnboardingView x:Name="OnboardingOverlay" Visibility="Collapsed"/>
     </Grid>
 </Window>

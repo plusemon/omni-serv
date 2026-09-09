@@ -1302,6 +1302,10 @@ public sealed class Engine
         Info($"hosts editable now (admin): {Hosts.IsElevated()}  (else OmniServ prompts via UAC)");
         Info($"initialized: {Directory.Exists(Paths.Config)}");
 
+        Hdr("Runtimes");
+        if (Tools.HasVcRedist()) Ok("Visual C++ 2015-2022 Redistributable (x64) installed");
+        else Warn("Visual C++ 2015-2022 Redistributable (x64) MISSING — PHP/Apache will fail to run (vcruntime140.dll)");
+
         Hdr("Database host (Windows localhost stall)");
         var fixedHosts = SiteDbHostFix.Run(cfg.SitesRoot);
         if (fixedHosts.Count == 0) Ok("all site configs already use 127.0.0.1 (no slow localhost lookups)");

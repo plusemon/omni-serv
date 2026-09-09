@@ -159,8 +159,39 @@ public static class Downloader
         catch { }
     }
 
+    /// <summary>Ensure the Microsoft Visual C++ 2015-2022 Redistributable (x64) is installed.
+    /// PHP on Windows is built with MSVC and requires vcruntime140.dll. Without this,
+    /// launching php-cgi.exe triggers a Windows system dialog ("VCRUNTIME140.dll was not found").</summary>
+    public static async Task EnsureVcRedist(Action<string>? log = null)
+    {
+        if (Tools.HasVcRedist()) return;
+        log?.Invoke("Microsoft Visual C++ Redistributable (vcruntime140.dll) is missing — downloading installer…");
+        var installer = await DownloadToTmp("https://aka.ms/vs/17/release/vc_redist.x64.exe", "vc_redist.x64.exe");
+        log?.Invoke("Installing Microsoft Visual C++ Redistributable…");
+        if (!Elevation.Run("vcredist-install", installer))
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = installer,
+                    Arguments = "/install /passive /norestart",
+                    UseShellExecute = true,
+                    Verb = "runas"
+                };
+                var p = System.Diagnostics.Process.Start(psi);
+                p?.WaitForExit();
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Visual C++ Redistributable installation failed: {ex.Message}. Please install it manually.");
+            }
+        }
+    }
+
     public static async Task<string> InstallPhp(string version)
     {
+        await EnsureVcRedist();
         // Resolve the current patch + the NTS x64 zip path from the official manifest.
         var json = await Http.GetStringAsync("https://windows.php.net/downloads/releases/releases.json");
         using var doc = JsonDocument.Parse(json);

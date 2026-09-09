@@ -78,6 +78,18 @@ public sealed partial class DashboardPage : Page
                                    .Select(s => s.Key["php@".Length..]).OrderByDescending(v => v).ToList();
         var sites = snap.Sites.Where(s => !Engine.IsTool(s.Name)).OrderBy(s => s.Name).ToList();
 
+        // ── setup banner ──
+        var missing = EngineHost.Instance.Engine.MissingCore();
+        if (missing.Count > 0)
+        {
+            SetupBanner.Visibility = Visibility.Visible;
+            SetupBannerDetails.Text = $"Missing components: {string.Join(", ", missing.Select(m => m.label))}.";
+        }
+        else
+        {
+            SetupBanner.Visibility = Visibility.Collapsed;
+        }
+
         // ── status cards ──
         var nginx = Running("nginx"); var apache = Running("apache");
         WebVal.Text = apache && nginx ? "nginx + apache" : nginx ? "nginx" : apache ? "apache" : "nginx";
@@ -210,4 +222,6 @@ public sealed partial class DashboardPage : Page
     {
         try { Process.Start(new ProcessStartInfo { FileName = target, UseShellExecute = true }); } catch { }
     }
+
+    private void RunSetupWizard_Click(object sender, RoutedEventArgs e) => App.Window?.StartOnboarding();
 }

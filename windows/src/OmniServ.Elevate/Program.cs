@@ -59,6 +59,20 @@ try
             return p.ExitCode;
         }
 
+        case "vcredist-install":
+        {
+            var installer = args.Length > 1 ? args[1] : "";
+            if (!File.Exists(installer)) return 1;
+            var p = Process.Start(new ProcessStartInfo
+            {
+                FileName = installer,
+                Arguments = "/install /passive /norestart",
+                UseShellExecute = false,
+            })!;
+            p.WaitForExit();
+            return p.ExitCode;
+        }
+
         default:
             Console.Error.WriteLine($"unknown verb: {verb}");
             return 1;

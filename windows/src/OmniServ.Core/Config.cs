@@ -26,6 +26,7 @@ public sealed class Config
     [JsonPropertyName("auto_update")]              public bool AutoUpdate { get; set; } = true;
     [JsonPropertyName("start_services_on_launch")] public bool StartServicesOnLaunch { get; set; } = false;
     [JsonPropertyName("root_password")]            public string RootPassword { get; set; } = "";   // "" = passwordless root
+    [JsonPropertyName("onboarding_completed")]     public bool OnboardingCompleted { get; set; } = false;
 
     private static readonly JsonSerializerOptions Opts = new()
     {

@@ -145,4 +145,14 @@ public sealed partial class SettingsPage : Page
             catch (Exception ex) { UpdateStatus.Text = "Download failed: " + ex.Message; }
         }
     }
+
+    private void RunWizard_Click(object sender, RoutedEventArgs e) => App.Window?.StartOnboarding();
+
+    private async void AddDefender_Click(object sender, RoutedEventArgs e)
+    {
+        DefenderStatus.Text = "Requesting permission…";
+        var (ok, msg) = await System.Threading.Tasks.Task.Run(() =>
+            OmniServ.Core.WindowsDefender.AddExclusions(AppContext.BaseDirectory, OmniServ.Core.Paths.Home));
+        DefenderStatus.Text = ok ? "✓ Exclusions added to Windows Defender" : $"Could not add automatically ({msg})";
+    }
 }

@@ -21,6 +21,26 @@ public sealed partial class MainWindow : Window
         var icon = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
         if (System.IO.File.Exists(icon)) { try { AppWindow.SetIcon(icon); } catch { } }
 
+        try { SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop(); } catch { }
+
+        OnboardingOverlay.Completed += () => DispatcherQueue.TryEnqueue(() =>
+        {
+            HideOnboarding();
+            Nav.SelectedItem = Nav.MenuItems[0];
+            ContentFrame.Navigate(typeof(DashboardPage));
+        });
+        OnboardingOverlay.Skipped += () => DispatcherQueue.TryEnqueue(() =>
+        {
+            HideOnboarding();
+            Nav.SelectedItem = Nav.MenuItems[0];
+            ContentFrame.Navigate(typeof(DashboardPage));
+        });
+        OnboardingOverlay.CreateSiteRequested += () => DispatcherQueue.TryEnqueue(() =>
+        {
+            HideOnboarding();
+            GoToSites(addNew: true);
+        });
+
         _tray = new TrayIcon($"OmniServ {Updater.CurrentVersion} — local web stack", icon);
         _tray.OpenRequested += () => DispatcherQueue.TryEnqueue(ShowFromTray);
         _tray.QuitRequested += () => DispatcherQueue.TryEnqueue(QuitApp);
@@ -60,87 +80,40 @@ public sealed partial class MainWindow : Window
         await CheckForUpdateOnLaunch();
     }
 
-    /// <summary>First-run welcome: if the core stack (nginx + PHP + database + mkcert) isn't installed,
-    /// offer to install + start it in one click — so users who skip the readme are ready to add sites.
-    /// Returns true if this was a fresh install we handled (so we skip the update check).</summary>
+    /// <summary>First-run welcome: if onboarding has not been completed or the core stack
+    /// (nginx + PHP + database + mkcert) isn't installed, activate the dedicated onboarding wizard.
+    /// Returns true if onboarding was shown (so we skip the immediate update check).</summary>
     private async System.Threading.Tasks.Task<bool> OfferFirstRunSetup()
     {
         try
         {
-            if (!AppWindow.IsVisible || (Content as FrameworkElement)?.XamlRoot is not { } xamlRoot) return false;
+            if (!AppWindow.IsVisible) return false;
+            var cfg = Config.Load();
             var missing = EngineHost.Instance.Engine.MissingCore();
-            if (missing.Count == 0) return false;
-
-            var list = string.Join("\n", missing.Select(m => "        •  " + m.label));
-            var ask = new ContentDialog
+            if (!cfg.OnboardingCompleted || missing.Count > 0)
             {
-                Title = "Welcome to OmniServ — quick setup",
-                Content = $"Before you can create sites, OmniServ needs to install:\n\n{list}\n\nInstall them now? (one-time download, about a minute)",
-                PrimaryButtonText = "Install now", CloseButtonText = "Later",
-                DefaultButton = ContentDialogButton.Primary, XamlRoot = xamlRoot,
-            };
-            if (await ask.ShowAsync() != ContentDialogResult.Primary) return true;   // chose Later — still a handled first run
-
-            // Offer to add Defender exclusions BEFORE anything downloads, so AV can't quarantine the
-            // server binaries OmniServ fetches. Defender-only (other AVs have no API → manual, see README).
-            var avDlg = new ContentDialog
-            {
-                Title = "Protect OmniServ from antivirus (recommended)",
-                Content = "OmniServ downloads server programs (PHP, nginx, MariaDB, Redis…) that some antivirus engines wrongly flag and delete.\n\n" +
-                          "Add OmniServ's two folders to Windows Defender's exclusions now? Windows will ask for your permission.\n\n" +
-                          "Using a different antivirus (ESET, Avast, Bitdefender…)? Add them manually — see the README's antivirus section.",
-                PrimaryButtonText = "Add exclusions", CloseButtonText = "Skip",
-                DefaultButton = ContentDialogButton.Primary, XamlRoot = xamlRoot,
-            };
-            if (await avDlg.ShowAsync() == ContentDialogResult.Primary)
-            {
-                var (exOk, exMsg) = await System.Threading.Tasks.Task.Run(
-                    () => OmniServ.Core.WindowsDefender.AddExclusions(AppContext.BaseDirectory, OmniServ.Core.Paths.Home));
-                if (!exOk)
-                    await new ContentDialog
-                    {
-                        Title = "Couldn't add the exclusions automatically",
-                        Content = $"OmniServ couldn't add the Windows Defender exclusions ({exMsg}).\n\n" +
-                                  "Setup will continue. You can add them by hand anytime — see the README's antivirus section.",
-                        CloseButtonText = "OK", XamlRoot = xamlRoot,
-                    }.ShowAsync();
+                ShowOnboarding();
+                return true;
             }
-
-            var progress = new ContentDialog
-            {
-                Title = "Setting up OmniServ…",
-                Content = new StackPanel
-                {
-                    Spacing = 14,
-                    Children =
-                    {
-                        new ProgressRing { IsActive = true, Width = 36, Height = 36, HorizontalAlignment = HorizontalAlignment.Center },
-                        new TextBlock { Text = "Installing nginx, PHP and the database. This takes about a minute…", TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center },
-                    },
-                },
-                XamlRoot = xamlRoot,
-            };
-            _ = progress.ShowAsync();
-            await EngineHost.Instance.RunCaptured(() =>
-            {
-                EngineHost.Instance.Engine.Install("all");
-                EngineHost.Instance.Engine.Start("all");
-            });
-            progress.Hide();
-
-            var still = EngineHost.Instance.Engine.MissingCore();
-            await new ContentDialog
-            {
-                Title = still.Count == 0 ? "OmniServ is ready 🎉" : "Setup didn't fully finish",
-                Content = still.Count == 0
-                    ? "All set! Head to the Sites tab and add your first site."
-                    : "These couldn't be installed:\n\n" + string.Join("\n", still.Select(m => "        •  " + m.label)) +
-                      "\n\nYou can retry from the Services tab (check your antivirus if a download was blocked).",
-                CloseButtonText = "OK", XamlRoot = xamlRoot,
-            }.ShowAsync();
-            return true;
+            return false;
         }
         catch { return false; }
+    }
+
+    /// <summary>Open the dedicated full-window onboarding wizard.</summary>
+    public void StartOnboarding() => DispatcherQueue.TryEnqueue(ShowOnboarding);
+
+    public void ShowOnboarding()
+    {
+        OnboardingOverlay.Reset();
+        OnboardingOverlay.Visibility = Visibility.Visible;
+        Nav.Visibility = Visibility.Collapsed;
+    }
+
+    public void HideOnboarding()
+    {
+        OnboardingOverlay.Visibility = Visibility.Collapsed;
+        Nav.Visibility = Visibility.Visible;
     }
 
     /// <summary>On launch (auto-update on), check GitHub for a newer build and PROACTIVELY tell the user —

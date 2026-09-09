@@ -101,6 +101,17 @@ begin
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM OmniServ.App.exe', '', SW_HIDE, ewWaitUntilTerminated, rc);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM omniserv.exe',     '', SW_HIDE, ewWaitUntilTerminated, rc);
   Sleep(700);   // let the file handles release before the copy
+
+  // Ensure Microsoft Visual C++ 2015-2022 Redistributable (vcruntime140.dll) is installed for PHP & Apache.
+  if not FileExists(ExpandConstant('{sys}\vcruntime140.dll')) then
+  begin
+    Exec(ExpandConstant('{sys}\curl.exe'), '-fL https://aka.ms/vs/17/release/vc_redist.x64.exe -o "' + ExpandConstant('{tmp}\vc_redist.x64.exe') + '"', '', SW_HIDE, ewWaitUntilTerminated, rc);
+    if FileExists(ExpandConstant('{tmp}\vc_redist.x64.exe')) then
+    begin
+      Exec(ExpandConstant('{tmp}\vc_redist.x64.exe'), '/install /passive /norestart', '', SW_HIDE, ewWaitUntilTerminated, rc);
+      DeleteFile(ExpandConstant('{tmp}\vc_redist.x64.exe'));
+    end;
+  end;
 end;
 
 procedure OpenWebsite(Sender: TObject);

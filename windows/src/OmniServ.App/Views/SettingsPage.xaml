@@ -68,6 +68,32 @@
                 </StackPanel>
             </Border>
 
+            <!-- Setup & Security -->
+            <Border BorderThickness="1" CornerRadius="8" Padding="16"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Setup &amp; Security" FontWeight="SemiBold"/>
+                    <TextBlock Text="Reconfigure your development stack or refresh antivirus exclusions." Opacity="0.6" FontSize="12"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Click="RunWizard_Click" Style="{StaticResource AccentButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE762;" FontSize="13"/>
+                                <TextBlock Text="Run Setup Wizard"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Click="AddDefender_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE72E;" FontSize="13"/>
+                                <TextBlock Text="Add Defender exclusions"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <TextBlock x:Name="DefenderStatus" Opacity="0.7" FontSize="12" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
             <TextBlock x:Name="Version" Opacity="0.5" FontSize="12"/>
         </StackPanel>
     </ScrollViewer>
