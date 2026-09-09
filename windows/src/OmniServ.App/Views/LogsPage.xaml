@@ -14,8 +14,9 @@
         <TextBlock Grid.Row="0" Text="Logs" FontSize="26" FontWeight="SemiBold"/>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-            <ComboBox x:Name="FilePicker" Width="280" SelectionChanged="File_Changed"/>
+            <ComboBox x:Name="FilePicker" Width="280" PlaceholderText="Select a log file…" SelectionChanged="File_Changed"/>
             <Button Content="Refresh" Click="Refresh_Click"/>
+            <Button Content="Open folder" Click="OpenFolder_Click"/>
         </StackPanel>
 
         <Border Grid.Row="2" BorderThickness="1" CornerRadius="8" Padding="12"

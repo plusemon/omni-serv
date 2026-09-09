@@ -138,9 +138,12 @@ public static class PySite
         {
             var f = LogFile(name);
             if (!File.Exists(f)) return "";
-            var bytes = File.ReadAllBytes(f);
-            var start = Math.Max(0, bytes.Length - maxBytes);
-            return System.Text.Encoding.UTF8.GetString(bytes, start, bytes.Length - start);
+            using var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var len = (int)Math.Min(fs.Length, maxBytes);
+            if (fs.Length > maxBytes) fs.Seek(-maxBytes, SeekOrigin.End);
+            var bytes = new byte[len];
+            var read = fs.Read(bytes, 0, len);
+            return System.Text.Encoding.UTF8.GetString(bytes, 0, read);
         }
         catch { return ""; }
     }

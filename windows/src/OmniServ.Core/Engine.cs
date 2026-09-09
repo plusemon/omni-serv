@@ -1237,7 +1237,26 @@ public sealed class Engine
         if (name.Contains('/') || name.Contains('\\') || name.Contains("..")) throw new BhException("invalid log name");
         var path = Path.Combine(Paths.Logs, name);
         if (!File.Exists(path)) { Info($"(no log yet: {name})"); return; }
-        foreach (var line in File.ReadLines(path).TakeLast(lines)) Out(line);
+        try
+        {
+            foreach (var line in ReadLinesShared(path).TakeLast(lines)) Out(line);
+        }
+        catch (Exception ex)
+        {
+            Err($"failed to read log: {ex.Message}");
+        }
+    }
+
+    /// <summary>Read lines from a file using shared read/write so it doesn't throw a sharing violation
+    /// on Windows when a server daemon (nginx, mariadb, php) holds the log open for writing.</summary>
+    public static IEnumerable<string> ReadLinesShared(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
+                                      FileShare.ReadWrite | FileShare.Delete);
+        using var sr = new StreamReader(fs, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        string? line;
+        while ((line = sr.ReadLine()) is not null)
+            yield return line;
     }
 
     public IReadOnlyList<string> LogFiles() =>
@@ -1247,9 +1266,18 @@ public sealed class Engine
 
     public string LogText(string name, int lines = 400)
     {
-        if (name.Contains('/') || name.Contains('\\') || name.Contains("..")) return "";
+        if (string.IsNullOrWhiteSpace(name) || name.Contains('/') || name.Contains('\\') || name.Contains("..")) return "";
         var path = Path.Combine(Paths.Logs, name);
-        return File.Exists(path) ? string.Join("\n", File.ReadLines(path).TakeLast(lines)) : "(empty)";
+        if (!File.Exists(path)) return "(empty)";
+        try
+        {
+            var matched = ReadLinesShared(path).TakeLast(lines).ToList();
+            return matched.Count > 0 ? string.Join("\n", matched) : "(empty)";
+        }
+        catch (Exception ex)
+        {
+            return $"(error reading log: {ex.Message})";
+        }
     }
 
     // ── doctor ──────────────────────────────────────────────────────────────────
