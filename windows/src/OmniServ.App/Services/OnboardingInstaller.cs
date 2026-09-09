@@ -192,6 +192,7 @@ public sealed class OnboardingInstaller : INotifyPropertyChanged
         "memcached"   => ("Memcached Server", "High-performance distributed memory cache", "\uE776"),
         "fnm"         => ("Node.js (fnm)", "Fast Node Manager for modern JavaScript tooling", "\uE7BE"),
         "python"      => ("Python 3", "Standalone portable Python runtime", "\uE943"),
+        "composer"    => ("Composer", "PHP dependency manager for Laravel & frameworks", "\uE71D"),
         _ when key.StartsWith("php") =>
             ($"PHP {OmniServ.Core.Services.PhpVersion(key, cfg)}", "FastCGI runtime with essential extensions enabled", "\uE943"),
         _             => (key, "System component", "\uE71D"),

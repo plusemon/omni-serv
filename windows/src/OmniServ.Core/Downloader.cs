@@ -643,6 +643,170 @@ public static class Downloader
     public static async Task InstallAdminer(string dest)
         => await CurlTo("https://www.adminer.org/latest.php", dest);
 
+    private const string ComposerBatScript = @"@echo off
+setlocal DISABLEDELAYEDEXPANSION
+set ""BIN_DIR=%~dp0""
+set ""COMPOSER_PHAR=%BIN_DIR%composer.phar""
+
+if defined PHP_BINARY if exist ""%PHP_BINARY%"" (
+    set ""PHP_EXEC=%PHP_BINARY%""
+    goto :RUN
+)
+
+where.exe php.exe >nul 2>&1
+if %ERRORLEVEL% equ 0 (
+    set ""PHP_EXEC=php.exe""
+    goto :RUN
+)
+
+for /f ""delims="" %%I in ('dir /b /s /a:-d ""%BIN_DIR%..\php\php.exe"" 2^>nul') do (
+    set ""PHP_EXEC=%%I""
+    goto :RUN
+)
+
+for /f ""delims="" %%I in ('dir /b /s /a:-d ""%LOCALAPPDATA%\OmniServ\bin\php\php.exe"" 2^>nul') do (
+    set ""PHP_EXEC=%%I""
+    goto :RUN
+)
+
+echo [OmniServ] Error: php.exe not found. Install PHP via OmniServ first. >&2
+exit /b 1
+
+:RUN
+""%PHP_EXEC%"" ""%COMPOSER_PHAR%"" %*
+";
+
+    private const string ComposerShScript = @"#!/usr/bin/env sh
+dir=$(cd -P -- ""$(dirname -- ""$0"")"" && pwd -P)
+if [ -n ""$PHP_BINARY"" ] && [ -x ""$PHP_BINARY"" ]; then
+    exec ""$PHP_BINARY"" ""$dir/composer.phar"" ""$@""
+fi
+if command -v php >/dev/null 2>&1; then
+    exec php ""$dir/composer.phar"" ""$@""
+fi
+for p in ""$dir""/../php/*/php.exe ""$LOCALAPPDATA""/OmniServ/bin/php/*/php.exe; do
+    if [ -f ""$p"" ]; then
+        exec ""$p"" ""$dir/composer.phar"" ""$@""
+    fi
+done
+echo ""[OmniServ] Error: php.exe not found. Install PHP via OmniServ first."" >&2
+exit 1
+";
+
+    /// <summary>Download the official latest Composer phar into bin\composer and generate Windows runners.</summary>
+    public static async Task<string> InstallComposer()
+    {
+        var dir = Path.Combine(Paths.Bin, "composer");
+        Directory.CreateDirectory(dir);
+        var phar = Path.Combine(dir, "composer.phar");
+        await CurlTo("https://getcomposer.org/composer.phar", phar);
+
+        var bat = Path.Combine(dir, "composer.bat");
+        await File.WriteAllTextAsync(bat, ComposerBatScript);
+
+        var sh = Path.Combine(dir, "composer");
+        await File.WriteAllTextAsync(sh, ComposerShScript.Replace("\r\n", "\n"));
+
+        return bat;
+    }
+
+    /// <summary>Create a new Laravel project in <paramref name="root"/> using Composer and configure .env.</summary>
+    public static async Task InstallLaravel(string root, string db, string phpVersion = "")
+    {
+        if (!Tools.ComposerInstalled)
+        {
+            await InstallComposer();
+        }
+
+        var phar = Tools.ComposerPhar()
+            ?? throw new InvalidOperationException("composer.phar not found after install");
+
+        var cfg = Config.Load();
+        var ver = string.IsNullOrEmpty(phpVersion) ? cfg.DefaultPhp : phpVersion;
+        var phpExe = Tools.PhpExe(ver)
+            ?? Tools.PhpExe(cfg.DefaultPhp)
+            ?? Tools.PhpExe("8.4")
+            ?? Tools.PhpExe("8.3")
+            ?? Tools.PhpExe("8.2")
+            ?? throw new InvalidOperationException("No PHP executable found. Install PHP first to create a Laravel project.");
+
+        Directory.CreateDirectory(root);
+
+        // If root has only a placeholder index.php (e.g. from SiteAdd), remove it so composer doesn't complain directory is not empty
+        var publicDir = Path.Combine(root, "public");
+        var placeholderIndex = Path.Combine(publicDir, "index.php");
+        if (File.Exists(placeholderIndex))
+        {
+            try { File.Delete(placeholderIndex); } catch { }
+        }
+        if (Directory.Exists(publicDir) && !Directory.EnumerateFileSystemEntries(publicDir).Any())
+        {
+            try { Directory.Delete(publicDir); } catch { }
+        }
+
+        // Run composer create-project --prefer-dist laravel/laravel . --no-interaction
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = phpExe,
+            Arguments = $"-d memory_limit=-1 \"{phar}\" create-project --prefer-dist laravel/laravel . --no-interaction",
+            WorkingDirectory = root,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        var phpDir = Path.GetDirectoryName(phpExe)!;
+        var compDir = Path.GetDirectoryName(phar)!;
+        psi.Environment["PATH"] = phpDir + ";" + compDir + ";" + (Environment.GetEnvironmentVariable("PATH") ?? "");
+        psi.Environment["PHP_BINARY"] = phpExe;
+        psi.Environment["COMPOSER_MEMORY_LIMIT"] = "-1";
+
+        var p = System.Diagnostics.Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to launch PHP/Composer process.");
+
+        var stdoutTask = p.StandardOutput.ReadToEndAsync();
+        var stderrTask = p.StandardError.ReadToEndAsync();
+        await p.WaitForExitAsync();
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+
+        if (p.ExitCode != 0)
+        {
+            var err = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+            throw new InvalidOperationException($"Composer create-project failed (code {p.ExitCode}): {err.Trim()}");
+        }
+
+        // Configure .env with database connection
+        var envFile = Path.Combine(root, ".env");
+        var envExample = Path.Combine(root, ".env.example");
+        if (!File.Exists(envFile) && File.Exists(envExample))
+        {
+            File.Copy(envExample, envFile);
+        }
+
+        if (File.Exists(envFile))
+        {
+            var envContent = await File.ReadAllTextAsync(envFile);
+            var rootPw = cfg.RootPassword;
+
+            // Set DB credentials
+            envContent = System.Text.RegularExpressions.Regex.Replace(envContent, @"(?m)^DB_CONNECTION=.*$", "DB_CONNECTION=mysql");
+            envContent = System.Text.RegularExpressions.Regex.Replace(envContent, @"(?m)^DB_HOST=.*$", "DB_HOST=127.0.0.1");
+            envContent = System.Text.RegularExpressions.Regex.Replace(envContent, @"(?m)^DB_PORT=.*$", "DB_PORT=3306");
+            envContent = System.Text.RegularExpressions.Regex.Replace(envContent, @"(?m)^DB_DATABASE=.*$", $"DB_DATABASE={db}");
+            envContent = System.Text.RegularExpressions.Regex.Replace(envContent, @"(?m)^DB_USERNAME=.*$", "DB_USERNAME=root");
+            envContent = System.Text.RegularExpressions.Regex.Replace(envContent, @"(?m)^DB_PASSWORD=.*$", $"DB_PASSWORD={rootPw}");
+
+            // Set APP_URL
+            var domain = $"{Path.GetFileName(root)}.{cfg.Tld}";
+            envContent = System.Text.RegularExpressions.Regex.Replace(envContent, @"(?m)^APP_URL=.*$", $"APP_URL=http://{domain}");
+
+            await File.WriteAllTextAsync(envFile, envContent);
+        }
+    }
+
     static Downloader()
     {
         Http.DefaultRequestHeaders.UserAgent.ParseAdd("OmniServ/0.1 (+https://github.com/plusemon/OmniServ)");

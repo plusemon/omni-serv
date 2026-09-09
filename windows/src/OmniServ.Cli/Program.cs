@@ -234,7 +234,7 @@ static Dictionary<string, string> Flags(IEnumerable<string> a)
 static void Usage() => Console.WriteLine("""
     OmniServ (Windows) — usage:
       omniserv init | doctor | status | api
-      omniserv install <nginx|php@8.4|mkcert>
+      omniserv install <nginx|php@8.4|mkcert|composer>
       omniserv start|stop|restart [svc|all]      (svc: nginx|mariadb|mailpit|php@X)
       omniserv enable|disable <svc>
       omniserv site add <name> [--php 8.4] [--root path] [--server nginx|apache] [--type wordpress|php|laravel|others]

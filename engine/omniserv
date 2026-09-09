@@ -46,6 +46,7 @@ mkcert|mkcert|bin/mkcert|tls
 mailpit|mailpit|bin/mailpit|mail
 fnm|fnm|bin/fnm|node
 python|python@3.13|opt/python@3.13/bin/python3.13|python
+composer|composer|bin/composer|tool
 EOF
 }
 

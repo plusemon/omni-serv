@@ -47,7 +47,7 @@ public sealed class Engine
     {
         NeedInit();
         if (string.IsNullOrEmpty(tool))
-            throw new BhException("usage: omniserv install <all|nginx|apache|php@8.4|mariadb|redis|memcached|mkcert|mailpit|fnm|cloudflared>");
+            throw new BhException("usage: omniserv install <all|nginx|apache|php@8.4|mariadb|redis|memcached|mkcert|composer|mailpit|fnm|cloudflared>");
         var cfg = Config.Load();
 
         if (tool == "all")
@@ -69,6 +69,7 @@ public sealed class Engine
                 "redis"      => Get("redis",     cfg, () => Downloader.InstallRedis()),
                 "memcached"  => Get("memcached", cfg, () => Downloader.InstallMemcached()),
                 "mkcert"     => Get("mkcert",    cfg, () => Downloader.InstallMkcert()),
+                "composer"   => Get("composer",  cfg, () => Downloader.InstallComposer()),
                 "mailpit"    => Get("mailpit",   cfg, () => Downloader.InstallMailpit()),
                 "fnm" or "node" => Get("fnm",    cfg, () => Downloader.InstallFnm()),
                 "python" or "python3" => Get("python", cfg, () => Downloader.InstallPython()),
@@ -99,18 +100,21 @@ public sealed class Engine
         if (type is "php" or "laravel" or "wordpress") req.Add(Services.PhpKey(php, cfg));
         if (type is "wordpress" or "laravel")
             req.Add(Services.Installed("mysql", cfg) && !Services.Installed("mariadb", cfg) ? "mysql" : "mariadb");
+        if (type == "laravel")
+            req.Add("composer");
         return req;
     }
 
     private static string ServiceLabel(string key, Config cfg) => key switch
     {
-        "nginx"   => "nginx (web server)",
-        "apache"  => "Apache (web server)",
-        "mariadb" => "MariaDB (database)",
-        "mysql"   => "MySQL (database)",
-        "fnm"     => "Node.js (fnm)",
-        "python"  => "Python (interpreter)",
-        "mkcert"  => "mkcert (HTTPS certificates)",
+        "nginx"    => "nginx (web server)",
+        "apache"   => "Apache (web server)",
+        "mariadb"  => "MariaDB (database)",
+        "mysql"    => "MySQL (database)",
+        "fnm"      => "Node.js (fnm)",
+        "python"   => "Python (interpreter)",
+        "mkcert"   => "mkcert (HTTPS certificates)",
+        "composer" => "Composer (PHP dependency manager)",
         _ when key.StartsWith("php") => $"PHP {Services.PhpVersion(key, cfg)}",
         _ => key,
     };
@@ -544,7 +548,7 @@ public sealed class Engine
         var vhostRoot = type == "laravel" ? Path.Combine(root, "public") : root;
 
         Directory.CreateDirectory(vhostRoot);
-        if (!File.Exists(Path.Combine(vhostRoot, "index.php")) && !File.Exists(Path.Combine(vhostRoot, "index.html")))
+        if (type != "laravel" && !File.Exists(Path.Combine(vhostRoot, "index.php")) && !File.Exists(Path.Combine(vhostRoot, "index.html")))
             File.WriteAllText(Path.Combine(vhostRoot, "index.php"), DefaultIndexPhp);
 
         if (PhpCgi.Start(version)) Ok($"php-cgi {version} on :{PhpCgi.PortFor(version)}");
@@ -567,7 +571,7 @@ public sealed class Engine
         if (Nginx.Running()) Nginx.Reload(cfg);
         else { var (ok, msg) = Nginx.Start(cfg); if (ok) Ok(msg); else Warn(msg); }
 
-        Provision(name, type, root);
+        Provision(name, type, root, version);
         EnsureHosts(domain);
 
         Hdr($"Site '{name}' added");
@@ -576,8 +580,8 @@ public sealed class Engine
         Info($"php    : {phpKey}   server: {server}   type: {type}");
     }
 
-    /// <summary>Per-type setup: WordPress (DB + files + wp-config) or php (DB only).</summary>
-    private void Provision(string name, string type, string root)
+    /// <summary>Per-type setup: WordPress (DB + files + wp-config), Laravel (DB + composer create-project), or php (DB only).</summary>
+    private void Provision(string name, string type, string root, string phpVersion = "")
     {
         if (type is not ("php" or "laravel" or "wordpress")) return;
         // This site type needs a database. Make sure the server is installed + running,
@@ -602,6 +606,23 @@ public sealed class Engine
             Hdr("Downloading WordPress (latest)");
             try { Downloader.InstallWordPress(root, db).GetAwaiter().GetResult(); Ok("WordPress installed — open the site to finish setup (title + admin user)"); }
             catch (Exception ex) { Warn("WordPress download failed: " + ex.Message); }
+        }
+        else if (type == "laravel" && !File.Exists(Path.Combine(root, "artisan")))
+        {
+            Hdr("Installing Laravel via Composer");
+            try
+            {
+                Downloader.InstallLaravel(root, db, phpVersion).GetAwaiter().GetResult();
+                Ok("Laravel installed — database configured in .env");
+            }
+            catch (Exception ex)
+            {
+                Warn("Laravel install failed: " + ex.Message);
+                var vhostRoot = Path.Combine(root, "public");
+                Directory.CreateDirectory(vhostRoot);
+                if (!File.Exists(Path.Combine(vhostRoot, "index.php")) && !File.Exists(Path.Combine(vhostRoot, "index.html")))
+                    File.WriteAllText(Path.Combine(vhostRoot, "index.php"), DefaultIndexPhp);
+            }
         }
     }
 

@@ -180,4 +180,42 @@ public static class Tools
         }
         catch { return null; }
     }
+
+    // ── Composer (PHP package manager) ───────────────────────────────────────────
+    public static string? ComposerPhar() => Find("composer", "composer.phar");
+    public static string? ComposerBat()  => Find("composer", "composer.bat");
+    public static bool ComposerInstalled => ComposerPhar() is not null;
+    /// <summary>Directory holding the managed composer.phar and composer.bat.</summary>
+    public static string? ComposerBinDir() => ComposerPhar() is { } p ? Path.GetDirectoryName(p) : null;
+
+    private static string? _composerVer, _composerVerForPhar;
+    /// <summary>The installed Composer version (e.g. "2.8.6"), from probing via php or defaulting to 2.x.</summary>
+    public static string? ComposerVersion()
+    {
+        if (ComposerPhar() is not { } phar) return null;
+        if (_composerVerForPhar == phar && _composerVer is not null) return _composerVer;
+
+        var cfg = Config.Load();
+        var php = PhpExe(cfg.DefaultPhp) ?? PhpExe("8.4") ?? PhpExe("8.3") ?? PhpExe("8.2");
+        if (php is not null)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = php,
+                    Arguments = $"\"{phar}\" --version",
+                    UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true,
+                };
+                var p = System.Diagnostics.Process.Start(psi)!;
+                var outp = p.StandardOutput.ReadToEnd();
+                p.WaitForExit(4000);
+                var m = System.Text.RegularExpressions.Regex.Match(outp, @"Composer\s+version\s+(\d+\.\d+\.\d+)");
+                if (m.Success) { _composerVer = m.Groups[1].Value; _composerVerForPhar = phar; return _composerVer; }
+            }
+            catch { }
+        }
+        return "2.x";
+    }
 }

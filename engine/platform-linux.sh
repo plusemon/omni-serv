@@ -98,6 +98,7 @@ mkcert|mkcert|usr/bin/mkcert|tls
 mailpit|mailpit|usr/local/bin/mailpit|mail
 fnm|fnm|usr/local/bin/fnm|node
 python|python3-venv|usr/bin/python3|python
+composer|composer|usr/local/bin/composer|tool
 EOF
 }
 

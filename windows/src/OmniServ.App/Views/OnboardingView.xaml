@@ -192,12 +192,15 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
                                 <CheckBox x:Name="MailpitCheck" Grid.Row="0" Grid.Column="0" Content="Mailpit (Local email testing)"/>
                                 <CheckBox x:Name="RedisCheck" Grid.Row="0" Grid.Column="1" Content="Redis (In-memory cache)"/>
                                 <CheckBox x:Name="NodeCheck" Grid.Row="1" Grid.Column="0" Content="Node.js (fnm version manager)"/>
                                 <CheckBox x:Name="PythonCheck" Grid.Row="1" Grid.Column="1" Content="Python 3 (Portable interpreter)"/>
+                                <CheckBox x:Name="ComposerCheck" Grid.Row="2" Grid.Column="0" Content="Composer (PHP package manager)"/>
+                                <CheckBox x:Name="MemcachedCheck" Grid.Row="2" Grid.Column="1" Content="Memcached (Distributed cache)"/>
                             </Grid>
                         </StackPanel>
                     </Border>

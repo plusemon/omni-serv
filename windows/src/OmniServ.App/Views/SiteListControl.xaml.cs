@@ -155,13 +155,65 @@ public sealed partial class SiteListControl : UserControl
         catch { Launch(r.Root); }
     }
 
-    /// <summary>Open a terminal at the site folder — Windows Terminal if present, else PowerShell, else cmd.</summary>
+    /// <summary>Open a terminal at the site folder — Windows Terminal if present, else PowerShell, else cmd — with PHP and Composer on PATH.</summary>
     private void Terminal_Click(object s, RoutedEventArgs e)
     {
         if (Row(GetTag(s)) is not { } r || r.Root.Length == 0) return;
-        try { Process.Start(new ProcessStartInfo { FileName = "wt.exe", Arguments = $"-d \"{r.Root}\"", UseShellExecute = true }); return; } catch { }
-        try { Process.Start(new ProcessStartInfo { FileName = "powershell.exe", Arguments = $"-NoExit -Command \"Set-Location -LiteralPath '{r.Root.Replace("'", "''")}'\"", UseShellExecute = true }); return; } catch { }
-        try { Process.Start(new ProcessStartInfo { FileName = "cmd.exe", Arguments = $"/K cd /d \"{r.Root}\"", UseShellExecute = true }); } catch { }
+
+        var pathList = new List<string>();
+        var phpExe = Tools.PhpExe(r.Php);
+        if (phpExe is not null) pathList.Add(System.IO.Path.GetDirectoryName(phpExe)!);
+        if (Tools.ComposerBinDir() is { } compDir) pathList.Add(compDir);
+        if (Tools.MysqlClientExe() is { } myExe) pathList.Add(System.IO.Path.GetDirectoryName(myExe)!);
+        if (Tools.NodeBinDir() is { } nodeDir) pathList.Add(nodeDir);
+        if (Tools.PythonBinDir() is { } pyDir) pathList.Add(pyDir);
+
+        var existingPath = Env("PATH");
+        var newPath = string.Join(";", pathList) + (pathList.Count > 0 && existingPath.Length > 0 ? ";" : "") + existingPath;
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "wt.exe",
+                Arguments = $"-d \"{r.Root}\"",
+                UseShellExecute = false,
+            };
+            psi.Environment["PATH"] = newPath;
+            if (phpExe is not null) psi.Environment["PHP_BINARY"] = phpExe;
+            Process.Start(psi);
+            return;
+        }
+        catch { }
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoExit -Command \"$env:PATH = '{newPath.Replace("'", "''")}'; Set-Location -LiteralPath '{r.Root.Replace("'", "''")}'\"",
+                UseShellExecute = false,
+            };
+            psi.Environment["PATH"] = newPath;
+            if (phpExe is not null) psi.Environment["PHP_BINARY"] = phpExe;
+            Process.Start(psi);
+            return;
+        }
+        catch { }
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/K cd /d \"{r.Root}\"",
+                UseShellExecute = false,
+            };
+            psi.Environment["PATH"] = newPath;
+            if (phpExe is not null) psi.Environment["PHP_BINARY"] = phpExe;
+            Process.Start(psi);
+        }
+        catch { }
     }
 
     private static string Env(string v) => Environment.GetEnvironmentVariable(v) ?? "";

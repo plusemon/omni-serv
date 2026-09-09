@@ -26,6 +26,7 @@ public static class Services
         list.Add(new("redis",     ServiceRole.Cache));
         list.Add(new("memcached", ServiceRole.Cache));
         list.Add(new("mkcert",    ServiceRole.Tool));
+        list.Add(new("composer",  ServiceRole.Tool));
         list.Add(new("mailpit",   ServiceRole.Mail));
         list.Add(new("fnm",       ServiceRole.Node));
         list.Add(new("python",    ServiceRole.Python));
@@ -48,6 +49,7 @@ public static class Services
         "memcached" => "Memcached",
         "mailpit"   => "Mailpit",
         "mkcert"    => "mkcert",
+        "composer"  => Tools.ComposerVersion() is { } cv ? $"Composer {cv}" : "Composer",
         "fnm"       => "fnm",
         "python"    => Tools.PythonVersion() is { } pv ? $"Python {pv}" : "Python",
         _ when RoleOf(key) == ServiceRole.Php => "PHP " + PhpVersion(key, cfg),
@@ -80,6 +82,7 @@ public static class Services
         "redis"     => Tools.RedisServerExe() is not null,
         "memcached" => Tools.MemcachedExe() is not null,
         "mkcert"    => Tools.MkcertExe() is not null,
+        "composer"  => Tools.ComposerInstalled,
         "mailpit"   => Tools.MailpitExe() is not null,
         "fnm"       => Tools.FnmExe() is not null,
         "python"    => Tools.PythonInstalled,

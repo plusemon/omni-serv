@@ -199,6 +199,8 @@ public sealed partial class OnboardingView : UserControl
         if (RedisCheck.IsChecked == true)   tools.Add("redis");
         if (NodeCheck.IsChecked == true)    tools.Add("fnm");
         if (PythonCheck.IsChecked == true)  tools.Add("python");
+        if (ComposerCheck.IsChecked == true) tools.Add("composer");
+        if (MemcachedCheck.IsChecked == true) tools.Add("memcached");
 
         _installer.Populate(tools, cfg);
 
