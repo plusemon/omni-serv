@@ -5,7 +5,7 @@
 
 #define MyAppName "OmniServ"
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.70"
+#define MyAppVersion "1.0.8"
 #endif
 #define MyAppPublisher "Emon Khan"
 #define MyAppExe "OmniServ.App.exe"

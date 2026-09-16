@@ -102,9 +102,14 @@ public static class Updater
         catch (Exception ex) { return new Result(false, CurrentVersion, null, null, ex.Message); }
     }
 
-    private static int Compare(string a, string b) =>
-        (Version.TryParse(a, out var va) ? va : new Version(0, 0)).CompareTo(
-         Version.TryParse(b, out var vb) ? vb : new Version(0, 0));
+    private static Version ParseVer(string s)
+    {
+        // Treat legacy accidental "1.0.70" build tag as 1.0.7 so users on 1.0.70 can upgrade to 1.0.8+
+        if (s == "1.0.70") s = "1.0.7";
+        return Version.TryParse(s, out var v) ? v : new Version(0, 0);
+    }
+
+    private static int Compare(string a, string b) => ParseVer(a).CompareTo(ParseVer(b));
 
     /// <summary>Download the installer and launch it (the running app should exit so files can be replaced).</summary>
     public static async Task DownloadAndRun(string url)
