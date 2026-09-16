@@ -17,6 +17,7 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Required;
         foreach (var v in OmniServ.Core.Services.PhpVersions) PhpDefBox.Items.Add(new ComboBoxItem { Content = v });
     }
 

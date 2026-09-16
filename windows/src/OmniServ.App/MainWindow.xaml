@@ -26,7 +26,7 @@
                 <muxc:NavigationViewItem Content="Logs"      Tag="logs"      Icon="Document"/>
             </muxc:NavigationView.MenuItems>
 
-            <Frame x:Name="ContentFrame"/>
+            <Frame x:Name="ContentFrame" CacheSize="15"/>
         </muxc:NavigationView>
 
         <!-- Dedicated Full-Window Onboarding Wizard -->

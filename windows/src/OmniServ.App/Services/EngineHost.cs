@@ -67,7 +67,16 @@ public sealed class EngineHost
         return (ok, sb.ToString().Trim());
     });
 
-    public Task<Snapshot> Snapshot() => Task.Run(() => Engine.Api());
+    public Snapshot? LastSnapshot { get; private set; }
+    public event Action<Snapshot>? SnapshotUpdated;
+
+    public async Task<Snapshot> Snapshot()
+    {
+        var snap = await Task.Run(() => Engine.Api());
+        LastSnapshot = snap;
+        SnapshotUpdated?.Invoke(snap);
+        return snap;
+    }
 
     // ── tracked operations (installs etc.) — survive page navigation ──────────────
     /// <summary>State of a long-running operation, readable from any page so progress persists.</summary>

@@ -145,4 +145,25 @@ public static class Php
         }
         return list;
     }
+
+    /// <summary>Synchronize the default PHP version into the current user's PATH environment variable.</summary>
+    public static void SyncDefaultPhpToUserPath(string version)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try
+        {
+            var exe = Tools.PhpExe(version);
+            var dir = exe is not null ? Path.GetDirectoryName(exe) : Path.Combine(Paths.Bin, "php", version);
+            if (!Directory.Exists(dir)) return;
+
+            var userPath = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
+            var parts = userPath.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                                .Where(p => !p.Contains(@"OmniServ\bin\php", StringComparison.OrdinalIgnoreCase))
+                                .ToList();
+            parts.Add(dir);
+            var newPath = string.Join(";", parts);
+            Environment.SetEnvironmentVariable("Path", newPath, EnvironmentVariableTarget.User);
+        }
+        catch { }
+    }
 }

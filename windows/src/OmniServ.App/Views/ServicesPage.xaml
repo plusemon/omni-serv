@@ -6,16 +6,49 @@
     xmlns:local="using:OmniServ.App.Views">
 
     <ScrollViewer>
-        <StackPanel Padding="24" Spacing="14">
-            <Grid>
-                <StackPanel Spacing="2">
+        <StackPanel Padding="24" Spacing="16">
+            <!-- Header with Title, Search, and Global Service Controls -->
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
                     <TextBlock Text="Services" FontSize="26" FontWeight="SemiBold"/>
-                    <TextBlock Text="Install downloads portable builds on demand into OmniServ's own bin folder."
-                               Opacity="0.7"/>
+                    <TextBlock Text="Manage runtime environments and background daemons." Opacity="0.7" FontSize="13"/>
                 </StackPanel>
-                <ProgressRing x:Name="Busy" IsActive="False" Width="20" Height="20" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBox x:Name="SearchBox" PlaceholderText="Search services..." Width="190"
+                             TextChanged="SearchBox_TextChanged" VerticalAlignment="Center"/>
+
+                    <Button Click="StartAll_Click" Style="{StaticResource AccentButtonStyle}" ToolTipService.ToolTip="Start all enabled services">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE768;" FontSize="12"/>
+                            <TextBlock Text="Start all"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Click="StopAll_Click" ToolTipService.ToolTip="Stop all running services">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE71A;" FontSize="12"/>
+                            <TextBlock Text="Stop all"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Click="RestartAll_Click" ToolTipService.ToolTip="Restart all running services">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE72C;" FontSize="12"/>
+                            <TextBlock Text="Restart"/>
+                        </StackPanel>
+                    </Button>
+
+                    <ProgressRing x:Name="Busy" IsActive="False" Width="20" Height="20" VerticalAlignment="Center"/>
+                </StackPanel>
             </Grid>
 
+            <!-- Tracked Operation Banner -->
             <Border x:Name="OpBanner" Visibility="Collapsed" CornerRadius="8" Padding="12" BorderThickness="1"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                 <StackPanel Spacing="6">
@@ -31,53 +64,177 @@
                 </StackPanel>
             </Border>
 
+            <!-- Search Empty State -->
+            <TextBlock x:Name="EmptyNotice" Text="No matching services found."
+                       Opacity="0.6" FontSize="14" HorizontalAlignment="Center" Margin="0,32,0,0"
+                       Visibility="Collapsed"/>
+
+            <!-- Grouped Services List -->
             <ItemsControl x:Name="Groups">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="local:SvcGroup">
-                        <Border CornerRadius="8" Padding="10" Margin="0,0,0,8" BorderThickness="1"
+                        <Border CornerRadius="10" Padding="14,12" Margin="0,0,0,16" BorderThickness="1"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" Opacity="0.8" Margin="4,2,0,6"/>
+                            <StackPanel Spacing="6">
+                                <!-- Section Header with Title and Count Pill -->
+                                <Grid Margin="2,2,4,8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind Title}" FontWeight="Bold" FontSize="12"
+                                                   Opacity="0.75" CharacterSpacing="60"/>
+                                        <Border CornerRadius="10" Padding="7,1"
+                                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind CountText}" FontSize="11" Opacity="0.7"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Service Rows -->
                                 <ItemsControl ItemsSource="{x:Bind Rows}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="local:SvcRow">
-                                            <Grid Padding="6,5" ColumnSpacing="10">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="14"/>
-                                                    <ColumnDefinition Width="120"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Ellipse Grid.Column="0" Width="9" Height="9" Fill="{x:Bind DotBrush}" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="1" Text="{x:Bind Key}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="2" Text="{x:Bind StatusText}" Opacity="0.6" FontSize="12" VerticalAlignment="Center"/>
-                                                <ToggleButton Grid.Column="3" Tag="{x:Bind Key}" IsChecked="{x:Bind AutoStart}" Click="AutoStar_Click"
-                                                              ToolTipService.ToolTip="Start automatically" VerticalAlignment="Center" Padding="6"
-                                                              Visibility="{x:Bind ManageVis}">
-                                                    <FontIcon Glyph="&#xE734;" FontSize="13"/>
-                                                </ToggleButton>
-                                                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
-                                                    <Button Content="Install" Tag="{x:Bind Key}" Click="Install_Click" IsEnabled="{x:Bind NotInstalled}"/>
-                                                    <Button Content="Start"   Tag="{x:Bind Key}" Click="Start_Click"   IsEnabled="{x:Bind CanStart}" Visibility="{x:Bind ManageVis}"/>
-                                                    <Button Content="Stop"    Tag="{x:Bind Key}" Click="Stop_Click"    IsEnabled="{x:Bind Running}" Visibility="{x:Bind ManageVis}"/>
-                                                    <Button ToolTipService.ToolTip="More" IsEnabled="{x:Bind Installed}">
-                                                        <FontIcon Glyph="&#xE712;" FontSize="14"/>
-                                                        <Button.Flyout>
-                                                            <MenuFlyout>
-                                                                <MenuFlyoutItem Text="Edit php.ini" Tag="{x:Bind Key}" Click="EditIni_Click" Visibility="{x:Bind PhpVis}"/>
-                                                                <MenuFlyoutItem Text="Reinstall (update)" Tag="{x:Bind Key}" Click="Update_Click"/>
-                                                                <MenuFlyoutSeparator/>
-                                                                <MenuFlyoutItem Text="Uninstall" Tag="{x:Bind Key}" Click="Uninstall_Click"/>
-                                                            </MenuFlyout>
-                                                        </Button.Flyout>
-                                                    </Button>
-                                                </StackPanel>
-                                            </Grid>
+                                            <Border CornerRadius="10" Padding="14,10" Margin="0,0,0,6" BorderThickness="1"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                                                <Grid ColumnSpacing="14">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <!-- Col 0: Service Monogram Icon -->
+                                                    <Border Grid.Column="0" Width="38" Height="38" CornerRadius="8"
+                                                            Background="{x:Bind MonogramBgBrush}" VerticalAlignment="Center">
+                                                        <TextBlock Text="{x:Bind Monogram}" FontWeight="Bold" FontSize="12"
+                                                                   Foreground="{x:Bind MonogramFgBrush}"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+
+                                                    <!-- Col 1: Service Identity, Badges & Metadata -->
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                            <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+
+                                                            <!-- Default CLI badge -->
+                                                            <Border Visibility="{x:Bind DefaultBadgeVis}" CornerRadius="10" Padding="7,1.5"
+                                                                    Background="#250D6EFD" BorderThickness="1" BorderBrush="#550D6EFD" VerticalAlignment="Center">
+                                                                <TextBlock Text="CLI: Active" FontSize="10.5" FontWeight="SemiBold" Foreground="#6EA8FE"/>
+                                                            </Border>
+
+                                                            <!-- Semantic Status Pill Badge -->
+                                                            <Border CornerRadius="10" Padding="8,1.5"
+                                                                    Background="{x:Bind StatusBadgeBgBrush}"
+                                                                    BorderThickness="1" BorderBrush="{x:Bind StatusBadgeBorderBrush}"
+                                                                    VerticalAlignment="Center">
+                                                                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                                                    <Ellipse Width="6" Height="6" Fill="{x:Bind StatusDotBrush}" VerticalAlignment="Center"/>
+                                                                    <TextBlock Text="{x:Bind StatusBadgeText}" FontSize="11" FontWeight="Medium"
+                                                                               Foreground="{x:Bind StatusBadgeFgBrush}" VerticalAlignment="Center"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </StackPanel>
+
+                                                        <!-- Metadata: Port and Version -->
+                                                        <TextBlock Text="{x:Bind MetaText}" FontSize="11.5" Opacity="0.65" FontFamily="Consolas, Segoe UI Variable"/>
+                                                    </StackPanel>
+
+                                                    <!-- Col 2: Telemetry (RAM) -->
+                                                    <Border Grid.Column="2" VerticalAlignment="Center" Margin="0,0,4,0"
+                                                            Visibility="{x:Bind RamVis}" CornerRadius="4" Padding="6,2"
+                                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                                        <TextBlock Text="{x:Bind RamText}" FontSize="11" Opacity="0.75" FontFamily="Consolas, Segoe UI Variable"/>
+                                                    </Border>
+
+                                                    <!-- Col 3: Actions -->
+                                                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                        <!-- Star / Favorite Toggle (AutoStart) -->
+                                                        <ToggleButton Tag="{x:Bind Key}" IsChecked="{x:Bind AutoStart}" Click="AutoStar_Click"
+                                                                      ToolTipService.ToolTip="Start automatically with OmniServ"
+                                                                      Visibility="{x:Bind ManageVis}" Padding="6" CornerRadius="6" VerticalAlignment="Center">
+                                                            <FontIcon Glyph="{x:Bind StarGlyph}" FontSize="13" Foreground="{x:Bind StarFgBrush}"/>
+                                                        </ToggleButton>
+
+                                                        <!-- Contextual: Not Installed -> + Install -->
+                                                        <Button Content="+ Install" Tag="{x:Bind Key}" Click="Install_Click"
+                                                                Visibility="{x:Bind InstallVis}" Style="{StaticResource AccentButtonStyle}"
+                                                                CornerRadius="6" Padding="12,5" FontSize="12"/>
+
+                                                        <!-- Contextual: Stopped -> Start -->
+                                                        <Button Tag="{x:Bind Key}" Click="Start_Click"
+                                                                Visibility="{x:Bind StartVis}" CornerRadius="6" Padding="10,5" FontSize="12">
+                                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                                <FontIcon Glyph="&#xE768;" FontSize="11"/>
+                                                                <TextBlock Text="Start"/>
+                                                            </StackPanel>
+                                                        </Button>
+
+                                                        <!-- Contextual: Running -> Restart & Stop -->
+                                                        <Button Tag="{x:Bind Key}" Click="Restart_Click"
+                                                                Visibility="{x:Bind RunningVis}" CornerRadius="6" Padding="10,5" FontSize="12">
+                                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                                <FontIcon Glyph="&#xE72C;" FontSize="11"/>
+                                                                <TextBlock Text="Restart"/>
+                                                            </StackPanel>
+                                                        </Button>
+
+                                                        <Button Tag="{x:Bind Key}" Click="Stop_Click"
+                                                                Visibility="{x:Bind RunningVis}" CornerRadius="6" Padding="10,5" FontSize="12">
+                                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                                <FontIcon Glyph="&#xE71A;" FontSize="11" Foreground="#EF4444"/>
+                                                                <TextBlock Text="Stop" Foreground="#EF4444"/>
+                                                            </StackPanel>
+                                                        </Button>
+
+                                                        <!-- More Options Dropdown -->
+                                                        <Button ToolTipService.ToolTip="More options" Visibility="{x:Bind MoreVis}"
+                                                                CornerRadius="6" Padding="6" VerticalAlignment="Center">
+                                                            <FontIcon Glyph="&#xE712;" FontSize="13"/>
+                                                            <Button.Flyout>
+                                                                <MenuFlyout>
+                                                                    <MenuFlyoutItem Text="Set as Default CLI" Tag="{x:Bind Key}" Click="SetDefaultPhp_Click"
+                                                                                    Visibility="{x:Bind SetDefaultPhpVis}">
+                                                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE73E;"/></MenuFlyoutItem.Icon>
+                                                                    </MenuFlyoutItem>
+                                                                    <MenuFlyoutItem Text="{x:Bind ShellMenuText}" Tag="{x:Bind Key}" Click="OpenShell_Click"
+                                                                                    Visibility="{x:Bind OpenShellVis}">
+                                                                        <MenuFlyoutItem.Icon><FontIcon Glyph="{x:Bind ShellMenuGlyph}"/></MenuFlyoutItem.Icon>
+                                                                    </MenuFlyoutItem>
+                                                                    <MenuFlyoutItem Text="{x:Bind ConfigMenuText}" Tag="{x:Bind Key}" Click="EditConfig_Click"
+                                                                                    Visibility="{x:Bind EditConfigVis}">
+                                                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;"/></MenuFlyoutItem.Icon>
+                                                                    </MenuFlyoutItem>
+                                                                    <MenuFlyoutItem Text="View Logs" Tag="{x:Bind Key}" Click="ViewLog_Click"
+                                                                                    Visibility="{x:Bind ViewLogVis}">
+                                                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A5;"/></MenuFlyoutItem.Icon>
+                                                                    </MenuFlyoutItem>
+                                                                    <MenuFlyoutSeparator Visibility="{x:Bind SeparatorVis}"/>
+                                                                    <MenuFlyoutItem Text="Reinstall (update)" Tag="{x:Bind Key}" Click="Update_Click"
+                                                                                    Visibility="{x:Bind InstalledVis}">
+                                                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE777;"/></MenuFlyoutItem.Icon>
+                                                                    </MenuFlyoutItem>
+                                                                    <MenuFlyoutSeparator Visibility="{x:Bind InstalledVis}"/>
+                                                                    <MenuFlyoutItem Text="Uninstall" Tag="{x:Bind Key}" Click="Uninstall_Click"
+                                                                                    Visibility="{x:Bind InstalledVis}">
+                                                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" Foreground="#EF4444"/></MenuFlyoutItem.Icon>
+                                                                    </MenuFlyoutItem>
+                                                                </MenuFlyout>
+                                                            </Button.Flyout>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+
+                                <!-- Collapsible Older Versions Toggle (PHP group) -->
+                                <HyperlinkButton Content="{x:Bind OlderToggleText}"
+                                                 Visibility="{x:Bind OlderToggleVis}"
+                                                 Click="OlderToggle_Click"
+                                                 Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                 FontSize="12" Margin="2,4,0,0"/>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
@@ -86,3 +243,4 @@
         </StackPanel>
     </ScrollViewer>
 </Page>
+

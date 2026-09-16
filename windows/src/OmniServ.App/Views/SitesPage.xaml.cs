@@ -23,6 +23,7 @@ public sealed partial class SitesPage : Page
     public SitesPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Required;
         var cfg = Config.Load();
         foreach (var v in OmniServ.Core.Services.PhpVersions) PhpBox.Items.Add(new ComboBoxItem { Content = v });
         PhpBox.SelectedIndex = Math.Max(0, Array.IndexOf(OmniServ.Core.Services.PhpVersions, cfg.DefaultPhp));
@@ -31,6 +32,7 @@ public sealed partial class SitesPage : Page
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        if (EngineHost.Instance.LastSnapshot is { } last) RenderSnapshot(last);
         Refresh();
         // Arriving via the Dashboard "Add site" button → put the cursor in the name box, ready to type.
         if (e.Parameter as string == "add")
@@ -38,12 +40,17 @@ public sealed partial class SitesPage : Page
                 () => { try { NameBox.Focus(FocusState.Programmatic); } catch { } });
     }
 
-    private async void Refresh()
+    private void RenderSnapshot(Snapshot snap)
     {
         if (!_pageSizeSet) { SiteList.SetDefaultPageSize(Config.Load().SitesPageSize); _pageSizeSet = true; }
+        SiteList.SetData(snap.Sites.Where(s => !Engine.IsTool(s.Name)).OrderBy(s => s.Name).Select(ToRow));
+    }
+
+    private async void Refresh()
+    {
         Snapshot snap;
         try { snap = await EngineHost.Instance.Snapshot(); } catch { return; }
-        SiteList.SetData(snap.Sites.Where(s => !Engine.IsTool(s.Name)).OrderBy(s => s.Name).Select(ToRow));
+        RenderSnapshot(snap);
     }
 
     private static SiteRow ToRow(Site s) => new()

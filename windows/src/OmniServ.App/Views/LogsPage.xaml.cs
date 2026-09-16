@@ -17,6 +17,7 @@ public sealed partial class LogsPage : Page
     public LogsPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Required;
         Loaded += (_, _) =>
         {
             if (FilePicker.SelectedItem is null)

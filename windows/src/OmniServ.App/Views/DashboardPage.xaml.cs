@@ -27,13 +27,21 @@ public sealed partial class DashboardPage : Page
     public DashboardPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Required;
         EngineHost.Instance.LogAppended += OnLog;
         _timer.Tick += (_, _) => Refresh();
         LogBox.Text = EngineHost.Instance.LogText;
         SiteList.Changed += (_, _) => Refresh();   // re-pull after a per-site action
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e) { Refresh(); _timer.Start(); AutoEnableIonCube(); }
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        if (EngineHost.Instance.LastSnapshot is { } last) RenderSnapshot(last);
+        RefreshMetrics();
+        Refresh();
+        _timer.Start();
+        AutoEnableIonCube();
+    }
     protected override void OnNavigatedFrom(NavigationEventArgs e) => _timer.Stop();
 
     // ── ionCube ──────────────────────────────────────────────────────────────────────────────
@@ -68,11 +76,8 @@ public sealed partial class DashboardPage : Page
             LogScroll.ChangeView(null, LogScroll.ScrollableHeight, null);
         });
 
-    private async void Refresh()
+    private void RenderSnapshot(Snapshot snap)
     {
-        Snapshot snap;
-        try { snap = await EngineHost.Instance.Snapshot(); } catch { return; }
-
         bool Running(string key) => snap.Services.FirstOrDefault(s => s.Key == key)?.Running ?? false;
         var phpVers = snap.Services.Where(s => s.Role == ServiceRole.Php && s.Key.StartsWith("php@") && s.Installed)
                                    .Select(s => s.Key["php@".Length..]).OrderByDescending(v => v).ToList();
@@ -111,29 +116,9 @@ public sealed partial class DashboardPage : Page
         CacheSub.Text = $"redis {(redis ? "on" : "off")}, memcached {(memc ? "on" : "off")}";
         CacheDot.Fill = redis || memc ? On : Off;
 
-        // ── metrics ──
-        var cpu = SystemMetrics.CpuPercent(); CpuText.Text = $"{cpu:0}%";
-        _cpuHist.Enqueue(cpu);
-        while (_cpuHist.Count > 40) _cpuHist.Dequeue();
-        var arr = _cpuHist.ToArray();
-        var pts = new Microsoft.UI.Xaml.Media.PointCollection();
-        for (var i = 0; i < arr.Length; i++)
-        {
-            var x = arr.Length <= 1 ? 0 : i * 200.0 / (arr.Length - 1);
-            var y = 30 - arr[i] / 100.0 * 30;
-            pts.Add(new Windows.Foundation.Point(x, y));
-        }
-        CpuSpark.Points = pts;
-        var (mu, mt, mp) = SystemMetrics.Memory(); MemText.Text = $"{mu:0.0} / {mt:0.0} GB"; MemBar.Value = mp;
-        var (du, dt, dp) = SystemMetrics.Disk(); DiskText.Text = $"{du:0} / {dt:0} GB"; DiskBar.Value = dp;
-        var (down, up) = SystemMetrics.Network();
-        NetDown.Text = $"Down  {Rate(down)}"; NetUp.Text = $"Up  {Rate(up)}";
-
         SubTitle.Text = $"{snap.Services.Count(s => s.Running)} services running · {sites.Count} sites";
 
         // ── global buttons reflect real service state ──
-        // "active" = installed + auto-start (★). Start all only has work when an active service
-        // isn't running yet; once everything active is up, Stop becomes the highlighted action.
         if (!Busy.IsActive)
         {
             string[] daemonKeys = { "nginx", "apache", "mysql", "mariadb", "postgresql", "redis", "memcached", "mailpit" };
@@ -161,6 +146,35 @@ public sealed partial class DashboardPage : Page
         SetTool(snap, "adminer",    AdmToggle, AdmOpen, AdmStatus, ref _admUrl);
         SetTool(snap, "mailpit",    MailToggle, MailOpen, MailStatus, ref _mailUrl);
         _loading = false;
+    }
+
+    private void RefreshMetrics()
+    {
+        // ── metrics ──
+        var cpu = SystemMetrics.CpuPercent(); CpuText.Text = $"{cpu:0}%";
+        _cpuHist.Enqueue(cpu);
+        while (_cpuHist.Count > 40) _cpuHist.Dequeue();
+        var arr = _cpuHist.ToArray();
+        var pts = new Microsoft.UI.Xaml.Media.PointCollection();
+        for (var i = 0; i < arr.Length; i++)
+        {
+            var x = arr.Length <= 1 ? 0 : i * 200.0 / (arr.Length - 1);
+            var y = 30 - arr[i] / 100.0 * 30;
+            pts.Add(new Windows.Foundation.Point(x, y));
+        }
+        CpuSpark.Points = pts;
+        var (mu, mt, mp) = SystemMetrics.Memory(); MemText.Text = $"{mu:0.0} / {mt:0.0} GB"; MemBar.Value = mp;
+        var (du, dt, dp) = SystemMetrics.Disk(); DiskText.Text = $"{du:0} / {dt:0} GB"; DiskBar.Value = dp;
+        var (down, up) = SystemMetrics.Network();
+        NetDown.Text = $"Down  {Rate(down)}"; NetUp.Text = $"Up  {Rate(up)}";
+    }
+
+    private async void Refresh()
+    {
+        RefreshMetrics();
+        Snapshot snap;
+        try { snap = await EngineHost.Instance.Snapshot(); } catch { return; }
+        RenderSnapshot(snap);
     }
 
     private static void SetTool(Snapshot snap, string name, ToggleSwitch toggle, Button open, TextBlock status, ref string url)

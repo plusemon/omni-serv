@@ -39,6 +39,7 @@ public sealed class Engine
         else Ok($"config already exists: {Paths.ConfigJson}");
 
         NginxConfig.RenderMain(cfg);
+        Php.SyncDefaultPhpToUserPath(cfg.DefaultPhp);
         Ok($"directories ready under {Paths.Home}");
     }
 
@@ -192,6 +193,7 @@ public sealed class Engine
         // Best-effort: an ionCube loader-download hiccup must never fail the PHP install itself.
         try { Php.Ioncube(ver, Out); }
         catch (Exception ex) { Warn($"ionCube not auto-enabled for php {ver}: {ex.Message} (run later: omniserv php ioncube {ver})"); }
+        if (cfg.DefaultPhp == ver) Php.SyncDefaultPhpToUserPath(ver);
         return exe;
     }
 
@@ -947,7 +949,7 @@ public sealed class Engine
         var services = Services.All.Select(s =>
         {
             var installed = Services.Installed(s.Key, cfg);
-            var running = s.Role switch
+            var running = installed && s.Role switch
             {
                 ServiceRole.Web => (s.Key == "nginx" && Nginx.Running()) || (s.Key == "apache" && Apache.Running()),
                 ServiceRole.Php => PhpCgi.Running(Services.PhpVersion(s.Key, cfg)),
@@ -1366,7 +1368,10 @@ public sealed class Engine
                 cfg.Tld = val; break;
             case "http_port":  cfg.HttpPort  = ParsePort(val, key); break;
             case "https_port": cfg.HttpsPort = ParsePort(val, key); break;
-            case "default_php": cfg.DefaultPhp = Services.PhpVersion(Services.PhpKey(val, cfg), cfg); break;
+            case "default_php":
+                cfg.DefaultPhp = Services.PhpVersion(Services.PhpKey(val, cfg), cfg);
+                Php.SyncDefaultPhpToUserPath(cfg.DefaultPhp);
+                break;
             case "default_web":
                 if (val is not ("nginx" or "apache")) throw new BhException("default_web must be nginx|apache");
                 cfg.DefaultWeb = val; break;

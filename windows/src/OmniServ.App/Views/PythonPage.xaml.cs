@@ -31,6 +31,7 @@ public sealed partial class PythonPage : Page
     public PythonPage()
     {
         InitializeComponent();
+        NavigationCacheMode = NavigationCacheMode.Required;
         foreach (var p in PageSizes) AppPageSizeBox.Items.Add(new ComboBoxItem { Content = p });
         var saved = Config.Load().AppsPageSize;
         var idx = Array.IndexOf(PageSizes, saved >= 100000 ? "All" : saved.ToString());

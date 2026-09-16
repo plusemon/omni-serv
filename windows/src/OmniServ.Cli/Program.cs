@@ -118,6 +118,7 @@ try
                 case "ini" when Arg(rest, 1) == "path":   Console.WriteLine(engine.PhpIniPath(Arg(rest, 2))); break;
                 case "ini" when Arg(rest, 1) == "reload": engine.PhpIniReload(Arg(rest, 2)); break;
                 case "ioncube":                           engine.PhpIoncube(Arg(rest, 1)); break;
+                case "default" or "use":                  engine.ConfigSet("default_php", Arg(rest, 1)); break;
                 case "status" or "":                      engine.PhpStatus(); break;
                 default: Usage(); return 1;
             }
@@ -244,7 +245,7 @@ static void Usage() => Console.WriteLine("""
       omniserv secure <domain>
       omniserv db {list|create|drop} [name]
       omniserv node {list|install|use|uninstall} [version]
-      omniserv php {ioncube <ver>|status|ini path|reload <ver>}
+      omniserv php {default <ver>|ioncube <ver>|status|ini path|reload <ver>}
       omniserv pma | adminer | mailpit            (DB UIs + mail catcher)
       omniserv tunnel {install|start|stop|url|list} [site]
       omniserv logs [--list | <file> [lines]]
