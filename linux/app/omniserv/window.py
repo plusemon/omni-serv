@@ -65,6 +65,7 @@ class MainWindow(Adw.ApplicationWindow):
         sidebar_box.append(Gtk.Separator())
 
         # nav items (everything except Settings)
+        self._nav_rows: dict[str, Gtk.ListBoxRow] = {}
         self.sidebar_list = Gtk.ListBox(css_classes=["navigation-sidebar"])
         self.sidebar_list.connect("row-selected", self._on_nav)
         for key, label, icon, _cls in NAV:
@@ -95,7 +96,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.sidebar_toggle.connect("toggled",
                                     lambda b: self.split.set_show_sidebar(b.get_active()))
         self.content_header.pack_start(self.sidebar_toggle)
-        self.content_title = Adw.WindowTitle(title="", subtitle="")
+        self.content_title = Adw.WindowTitle(title="OmniServ", subtitle="")
         self.content_header.set_title_widget(self.content_title)
 
         # Top bar quick search + refresh
@@ -106,6 +107,41 @@ class MainWindow(Adw.ApplicationWindow):
         refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic", tooltip_text="Refresh")
         refresh_btn.connect("clicked", lambda *_: self.refresh())
         self.content_header.pack_end(refresh_btn)
+
+        # Global Master Stack Controls in HeaderBar
+        self.header_btn_group = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            css_classes=["bh-button-group", "linked"],
+            valign=Gtk.Align.CENTER,
+            margin_end=4,
+        )
+        self.start_all_btn = Gtk.Button(
+            icon_name="media-playback-start-symbolic",
+            tooltip_text="Start all installed services",
+        )
+        self.start_all_btn.connect(
+            "clicked",
+            lambda *_: self.run_verb(["start", "all"], "Starting all services…"),
+        )
+        self.stop_all_btn = Gtk.Button(
+            icon_name="media-playback-stop-symbolic",
+            tooltip_text="Stop all running services",
+        )
+        self.stop_all_btn.connect(
+            "clicked",
+            lambda *_: self.run_verb(["stop", "all"], "Stopping all services…"),
+        )
+        self.restart_all_btn = Gtk.Button(
+            icon_name="view-refresh-symbolic",
+            tooltip_text="Restart all running services",
+        )
+        self.restart_all_btn.connect(
+            "clicked",
+            lambda *_: self.run_verb(["restart", "all"], "Restarting all services…"),
+        )
+        for b in (self.start_all_btn, self.stop_all_btn, self.restart_all_btn):
+            self.header_btn_group.append(b)
+        self.content_header.pack_end(self.header_btn_group)
         content_tv.add_top_bar(self.content_header)
 
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
@@ -134,11 +170,16 @@ class MainWindow(Adw.ApplicationWindow):
     # ── navigation ──
     def _nav_row(self, key: str, label: str, icon: str) -> Gtk.ListBoxRow:
         row = Gtk.ListBoxRow()
-        b = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6, margin_start=8, margin_end=8)
+        b = Gtk.Box(spacing=10, margin_top=6, margin_bottom=6, margin_start=8, margin_end=8)
         b.append(Gtk.Image.new_from_icon_name(icon))
-        b.append(Gtk.Label(label=label, xalign=0))
+        b.append(Gtk.Label(label=label, xalign=0, hexpand=True))
+        badge = Gtk.Label(css_classes=["bh-pill", "bh-sidebar-badge"])
+        badge.set_visible(False)
+        b.append(badge)
         row.set_child(b)
         row.nav_key = key
+        row.badge = badge
+        self._nav_rows[key] = row
         return row
 
     def _on_nav(self, listbox, row) -> None:
@@ -151,14 +192,77 @@ class MainWindow(Adw.ApplicationWindow):
             other.unselect_all()
         key = row.nav_key
         self.stack.set_visible_child_name(key)
-        label = next(l for k, l, _i, _c in NAV if k == key)
-        # Leave header title clean on pages with in-page title-1 headers to avoid redundancy
-        self.content_title.set_title(
-            "" if key in ("dashboard", "services", "sites", "databases", "node", "python", "logs", "settings") else label
-        )
+        self._update_header_title(key, self.last_data)
         page = self.pages[key]
         if hasattr(page, "refresh") and self.last_data:
             page.refresh(self.last_data)
+
+    def _update_header_title(self, key: str, data: dict) -> None:
+        label = next((l for k, l, _i, _c in NAV if k == key), key.title())
+        services = data.get("services", [])
+        cfg = data.get("config", {})
+        running_count = sum(1 for s in services if s.get("running"))
+        installed_count = sum(1 for s in services if s.get("installed"))
+
+        if key == "dashboard":
+            sub = f"{running_count} active services · {len(data.get('sites', []))} sites"
+        elif key == "services":
+            def_php = cfg.get("default_php", "8.5")
+            def_web = cfg.get("default_web", "nginx")
+            sub = f"{running_count} of {installed_count} active · Defaults: {def_php}, {def_web}"
+        elif key == "sites":
+            sub = f"{len(data.get('sites', []))} virtual hosts · *.test"
+        elif key == "databases":
+            sub = f"{len(data.get('databases', []))} databases · MariaDB / MySQL"
+        elif key == "node":
+            sub = "Node.js applications & runtime"
+        elif key == "python":
+            sub = "Python applications & virtualenvs"
+        elif key == "logs":
+            sub = "Live service logs & diagnostics"
+        elif key == "settings":
+            sub = f"OmniServ v{self.app_version}"
+        else:
+            sub = ""
+
+        self.content_title.set_title(label)
+        self.content_title.set_subtitle(sub)
+
+    def _update_stack_controls(self, data: dict) -> None:
+        services = data.get("services", [])
+        daemons = {"nginx", "httpd", "mariadb", "postgresql@16", "redis", "memcached", "mailpit"}
+        any_running = any(s.get("running") for s in services)
+        to_start = any(
+            s["key"] in daemons and s["installed"] and s.get("enabled") and not s.get("running")
+            for s in services
+        )
+        self.start_all_btn.set_sensitive(to_start)
+        self.stop_all_btn.set_sensitive(any_running)
+        self.restart_all_btn.set_sensitive(any_running)
+
+        for b in (self.start_all_btn, self.stop_all_btn):
+            b.remove_css_class("suggested-action")
+        if to_start:
+            self.start_all_btn.add_css_class("suggested-action")
+        elif any_running:
+            self.stop_all_btn.add_css_class("suggested-action")
+
+        # Update sidebar live badges
+        if "services" in self._nav_rows:
+            s_badge = self._nav_rows["services"].badge
+            if running_count := sum(1 for s in services if s.get("running")):
+                s_badge.set_label(str(running_count))
+                s_badge.set_visible(True)
+            else:
+                s_badge.set_visible(False)
+
+        if "sites" in self._nav_rows:
+            st_badge = self._nav_rows["sites"].badge
+            if sites_count := len(data.get("sites", [])):
+                st_badge.set_label(str(sites_count))
+                st_badge.set_visible(True)
+            else:
+                st_badge.set_visible(False)
 
     def _on_search_action(self) -> None:
         key = self.stack.get_visible_child_name()
@@ -190,6 +294,10 @@ class MainWindow(Adw.ApplicationWindow):
     def _apply(self, data: dict) -> bool:
         if data:
             self.last_data = data
+            self._update_stack_controls(data)
+            key = self.stack.get_visible_child_name()
+            if key:
+                self._update_header_title(key, data)
         key = self.stack.get_visible_child_name()
         page = self.pages.get(key)
         if page and hasattr(page, "refresh"):

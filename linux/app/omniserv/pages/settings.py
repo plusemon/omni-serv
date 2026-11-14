@@ -41,7 +41,9 @@ class SettingsPage(Gtk.Box):
             margin_start=18,
             margin_end=18,
         )
-        scroller.set_child(outer_box)
+        self.clamp = Adw.Clamp(maximum_size=1150, tightening_threshold=800)
+        self.clamp.set_child(outer_box)
+        scroller.set_child(self.clamp)
 
         # ── 1. In-Page Header ──
         head_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -66,7 +68,7 @@ class SettingsPage(Gtk.Box):
         # ── 2. Quick Server Overview Banner ──
         self.banner = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=12,
+            spacing=14,
             css_classes=["bh-settings-banner"],
         )
         banner_top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -83,64 +85,72 @@ class SettingsPage(Gtk.Box):
         )
         self.banner.append(banner_top)
 
-        # Summary Chips Flow
-        chips_flow = Gtk.FlowBox(
-            selection_mode=Gtk.SelectionMode.NONE,
-            max_children_per_line=6,
-            min_children_per_line=2,
+        # Summary Chips Grid (5 equal columns)
+        chips_grid = Gtk.Grid(
+            column_homogeneous=True,
+            column_spacing=10,
             row_spacing=8,
-            column_spacing=8,
+            hexpand=True,
         )
 
-        self.chip_tld_val = Gtk.Label(label=".test", css_classes=["bh-settings-chip-val"])
-        chips_flow.append(self._make_chip("Domain TLD", self.chip_tld_val))
+        self.chip_tld_val = Gtk.Label(label=".test", xalign=0, css_classes=["bh-settings-chip-val"])
+        chips_grid.attach(self._make_chip("Domain TLD", self.chip_tld_val), 0, 0, 1, 1)
 
-        self.chip_ports_val = Gtk.Label(label="80 / 443", css_classes=["bh-settings-chip-val"])
-        chips_flow.append(self._make_chip("Ports (HTTP/S)", self.chip_ports_val))
+        self.chip_ports_val = Gtk.Label(label="80 / 443", xalign=0, css_classes=["bh-settings-chip-val"])
+        chips_grid.attach(self._make_chip("Ports (HTTP/S)", self.chip_ports_val), 1, 0, 1, 1)
 
-        self.chip_php_val = Gtk.Label(label="PHP 8.4", css_classes=["bh-settings-chip-val"])
-        chips_flow.append(self._make_chip("Default PHP", self.chip_php_val))
+        self.chip_php_val = Gtk.Label(label="PHP 8.4", xalign=0, css_classes=["bh-settings-chip-val"])
+        chips_grid.attach(self._make_chip("Default PHP", self.chip_php_val), 2, 0, 1, 1)
 
-        self.chip_web_val = Gtk.Label(label="nginx", css_classes=["bh-settings-chip-val"])
-        chips_flow.append(self._make_chip("Default Web", self.chip_web_val))
+        self.chip_web_val = Gtk.Label(label="nginx", xalign=0, css_classes=["bh-settings-chip-val"])
+        chips_grid.attach(self._make_chip("Default Web", self.chip_web_val), 3, 0, 1, 1)
 
-        self.chip_helper_val = Gtk.Label(label="Active", css_classes=["bh-settings-chip-val"])
-        chips_flow.append(self._make_chip("Sudo Helper", self.chip_helper_val))
+        self.chip_helper_val = Gtk.Label(label="Active", xalign=0, css_classes=["bh-settings-chip-val"])
+        chips_grid.attach(self._make_chip("Sudo Helper", self.chip_helper_val), 4, 0, 1, 1)
 
-        self.banner.append(chips_flow)
+        self.banner.append(chips_grid)
 
-        # Quick directory shortcut buttons
+        # Quick directory shortcut buttons with labels and icons
         shortcuts_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
 
-        b_home = Gtk.Button(label="Open OmniServ Data (~/.omniserv)", icon_name="folder-symbolic", css_classes=["flat"])
+        b_home = Gtk.Button(css_classes=["flat", "bh-settings-shortcut-btn"])
+        b_home.set_child(Adw.ButtonContent(icon_name="folder-symbolic", label="OmniServ Data (~/.omniserv)"))
         b_home.connect("clicked", lambda *_: _open(os.path.expanduser("~/.omniserv")))
         shortcuts_row.append(b_home)
 
-        b_sites = Gtk.Button(label="Open Sites Directory", icon_name="folder-remote-symbolic", css_classes=["flat"])
-        b_sites.connect("clicked", lambda *_: _open(self._last_sites_root))
+        b_sites = Gtk.Button(css_classes=["flat", "bh-settings-shortcut-btn"])
+        b_sites.set_child(Adw.ButtonContent(icon_name="folder-remote-symbolic", label="Sites Directory"))
+        b_sites.connect("clicked", self._open_sites_dir)
         shortcuts_row.append(b_sites)
 
-        b_logs = Gtk.Button(label="View Logs", icon_name="text-x-generic-symbolic", css_classes=["flat"])
+        b_logs = Gtk.Button(css_classes=["flat", "bh-settings-shortcut-btn"])
+        b_logs.set_child(Adw.ButtonContent(icon_name="text-x-generic-symbolic", label="View Logs"))
         b_logs.connect("clicked", lambda *_: _open(os.path.expanduser("~/.omniserv/logs")))
         shortcuts_row.append(b_logs)
 
         self.banner.append(shortcuts_row)
         outer_box.append(self.banner)
 
-        # ── 3. Libadwaita Preferences Page ──
-        self.pref_page = Adw.PreferencesPage()
-        outer_box.append(self.pref_page)
+        # ── 3. Settings Groups (Vertical Layout) ──
+        groups_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, hexpand=True)
+        groups_box.append(self._build_topology_group())
+        groups_box.append(self._build_site_defaults_group())
+        groups_box.append(self._build_startup_system_group())
+        groups_box.append(self._build_appearance_sizes_group())
+        groups_box.append(self._build_updates_group())
+        groups_box.append(self._build_diagnostics_tools_group())
+        groups_box.append(self._build_about_group())
+        outer_box.append(groups_box)
 
-        self._build_topology_group()
-        self._build_site_defaults_group()
-        self._build_startup_system_group()
-        self._build_appearance_sizes_group()
-        self._build_updates_group()
-        self._build_diagnostics_tools_group()
-        self._build_about_group()
+    def _open_sites_dir(self, *_) -> None:
+        try:
+            os.makedirs(self._last_sites_root, exist_ok=True)
+        except Exception:
+            pass
+        _open(self._last_sites_root)
 
     def _make_chip(self, label: str, val_widget: Gtk.Widget) -> Gtk.Widget:
-        b = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, css_classes=["bh-settings-chip"])
+        b = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, css_classes=["bh-settings-chip"], hexpand=True)
         b.append(Gtk.Label(label=label, xalign=0, css_classes=["bh-settings-chip-lbl"]))
         b.append(val_widget)
         return b
@@ -196,7 +206,7 @@ class SettingsPage(Gtk.Box):
         self.topo_save_row.add_suffix(action_box)
         g.add(self.topo_save_row)
 
-        self.pref_page.add(g)
+        return g
 
     def _check_topology_dirty(self, *_) -> None:
         if self._syncing:
@@ -279,7 +289,7 @@ class SettingsPage(Gtk.Box):
         browse_btn = Gtk.Button(label="Browse…", valign=Gtk.Align.CENTER)
         browse_btn.connect("clicked", self._browse_sites_root)
         open_btn = Gtk.Button(icon_name="folder-open-symbolic", tooltip_text="Open in File Manager", valign=Gtk.Align.CENTER)
-        open_btn.connect("clicked", lambda *_: _open(self._last_sites_root))
+        open_btn.connect("clicked", self._open_sites_dir)
 
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         btn_box.append(open_btn)
@@ -287,7 +297,7 @@ class SettingsPage(Gtk.Box):
         self.sites_root_row.add_suffix(btn_box)
         g.add(self.sites_root_row)
 
-        self.pref_page.add(g)
+        return g
 
     def _on_php_selected(self, row, _p) -> None:
         if self._syncing:
@@ -377,7 +387,7 @@ class SettingsPage(Gtk.Box):
         self.helper_row.add_suffix(h_box)
         g.add(self.helper_row)
 
-        self.pref_page.add(g)
+        return g
 
     def _toggle_autostart(self, row, _p) -> None:
         if self._syncing:
@@ -445,7 +455,7 @@ class SettingsPage(Gtk.Box):
             self.sizes[key] = r
             g.add(r)
 
-        self.pref_page.add(g)
+        return g
 
     def _on_theme_selected(self, row, _p) -> None:
         idx = row.get_selected()
@@ -453,13 +463,8 @@ class SettingsPage(Gtk.Box):
         chosen = mapping.get(idx, "system")
         self.win.set_cfg("color_scheme", chosen)
 
-        sm = Adw.StyleManager.get_default()
-        if chosen == "dark":
-            sm.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-        elif chosen == "light":
-            sm.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
-        else:
-            sm.set_color_scheme(Adw.ColorScheme.DEFAULT)
+        from ..app import apply_theme
+        apply_theme(chosen)
         self.win.toast(f"Theme set to {['System Default', 'Dark Mode', 'Light Mode'][idx]}")
 
     # ── Group 5: Application Updates ──
@@ -484,12 +489,13 @@ class SettingsPage(Gtk.Box):
             title=f"OmniServ for Linux · v{self.win.app_version}",
             subtitle="Release channel: Stable (.deb / GitHub Releases)",
         )
-        check_btn = Gtk.Button(label="Check for Updates", icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER)
+        check_btn = Gtk.Button(valign=Gtk.Align.CENTER)
+        check_btn.set_child(Adw.ButtonContent(icon_name="view-refresh-symbolic", label="Check for Updates"))
         check_btn.connect("clicked", lambda *_: self.win.check_updates(force=True))
         self.update_row.add_suffix(check_btn)
         g.add(self.update_row)
 
-        self.pref_page.add(g)
+        return g
 
     # ── Group 6: Diagnostics, Maintenance and Tools ──
     def _build_diagnostics_tools_group(self) -> None:
@@ -504,7 +510,8 @@ class SettingsPage(Gtk.Box):
             subtitle="Inspect Homebrew, system paths, PHP socket directories, port availability, and dependencies",
         )
 
-        doc_btn = Gtk.Button(label="Run Doctor", icon_name="emblem-default-symbolic", valign=Gtk.Align.CENTER)
+        doc_btn = Gtk.Button(valign=Gtk.Align.CENTER)
+        doc_btn.set_child(Adw.ButtonContent(icon_name="emblem-default-symbolic", label="Run Doctor"))
         doc_btn.connect("clicked", lambda *_: self.win.doctor())
         doc_row.add_suffix(doc_btn)
         g.add(doc_row)
@@ -514,7 +521,8 @@ class SettingsPage(Gtk.Box):
             title="Rebuild All Virtual Hosts",
             subtitle="Regenerates Nginx and Apache configuration files for all active websites and reloads web servers",
         )
-        regen_btn = Gtk.Button(label="Rebuild", icon_name="document-revert-symbolic", valign=Gtk.Align.CENTER)
+        regen_btn = Gtk.Button(valign=Gtk.Align.CENTER)
+        regen_btn.set_child(Adw.ButtonContent(icon_name="document-revert-symbolic", label="Rebuild"))
         def on_regen(*_):
             tld = self.tld_row.get_text().strip().lstrip(".") or "test"
             self.win.run_verb(["config", "set", "tld", tld], "Rebuilding all site virtual hosts…")
@@ -528,12 +536,13 @@ class SettingsPage(Gtk.Box):
             title="OmniServ Configuration File",
             subtitle=conf_path,
         )
-        b_edit_conf = Gtk.Button(label="Open in Editor", icon_name="text-editor-symbolic", valign=Gtk.Align.CENTER)
+        b_edit_conf = Gtk.Button(valign=Gtk.Align.CENTER)
+        b_edit_conf.set_child(Adw.ButtonContent(icon_name="text-editor-symbolic", label="Open in Editor"))
         b_edit_conf.connect("clicked", lambda *_: _open_text_editor(conf_path))
         conf_row.add_suffix(b_edit_conf)
         g.add(conf_row)
 
-        self.pref_page.add(g)
+        return g
 
     # ── Group 7: About OmniServ ──
     def _build_about_group(self) -> None:
@@ -552,7 +561,8 @@ class SettingsPage(Gtk.Box):
         b_gh = Gtk.Button(icon_name="software-update-available-symbolic", tooltip_text="GitHub Repository", valign=Gtk.Align.CENTER)
         b_gh.connect("clicked", lambda *_: _open("https://github.com/plusemon/OmniServ"))
 
-        b_dialog = Gtk.Button(label="About OmniServ", icon_name="help-about-symbolic", valign=Gtk.Align.CENTER)
+        b_dialog = Gtk.Button(valign=Gtk.Align.CENTER)
+        b_dialog.set_child(Adw.ButtonContent(icon_name="help-about-symbolic", label="About OmniServ"))
         b_dialog.connect("clicked", lambda *_: self.win.about())
 
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -562,7 +572,7 @@ class SettingsPage(Gtk.Box):
         about_row.add_suffix(btn_box)
         g.add(about_row)
 
-        self.pref_page.add(g)
+        return g
 
     # ── Refresh Hook (called by MainWindow on API ticks) ──
     def refresh(self, data: dict) -> None:

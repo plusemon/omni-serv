@@ -16,6 +16,317 @@ from .prefs import cfg_str  # noqa: E402
 from .window import MainWindow  # noqa: E402
 
 
+_theme_provider: Gtk.CssProvider | None = None
+
+DARK_THEME_CSS = """
+@define-color window_bg_color #121316;
+@define-color window_fg_color #e4e7eb;
+@define-color view_bg_color #121316;
+@define-color view_fg_color #e4e7eb;
+@define-color headerbar_bg_color #121316;
+@define-color headerbar_fg_color #e4e7eb;
+@define-color card_bg_color #1a1d21;
+@define-color card_fg_color #e4e7eb;
+@define-color card_border_color rgba(255, 255, 255, 0.06);
+
+window.background, .background {
+  background-color: #121316;
+  color: #e4e7eb;
+}
+.bh-sidebar {
+  background-color: #16181c;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+.bh-brand {
+  color: #ffffff;
+}
+.bh-sidebar list.navigation-sidebar row {
+  color: #e4e7eb;
+}
+.bh-sidebar list.navigation-sidebar row:hover:not(:selected) {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+.card, .boxed-list, list.boxed-list, .bh-metric {
+  background-color: #1a1d21;
+  color: #e4e7eb;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.card:hover, .bh-metric:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background-color: #20242a;
+}
+list.boxed-list row {
+  color: #e4e7eb;
+}
+list.boxed-list row .dim-label, list.boxed-list row .subtitle {
+  color: #9aa0a6;
+}
+preferencesgroup > box > box > label.title {
+  color: #ffffff;
+}
+preferencesgroup > box > box > label.subtitle {
+  color: #9aa0a6;
+}
+searchentry, entry {
+  background-color: #16181c;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #e4e7eb;
+}
+.bh-settings-banner {
+  background: linear-gradient(135deg, rgba(13, 110, 253, 0.12) 0%, rgba(20, 23, 28, 0.8) 100%);
+  border-color: rgba(13, 110, 253, 0.22);
+}
+.bh-settings-chip {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.bh-settings-chip:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.bh-settings-chip-val {
+  color: #ffffff;
+}
+.bh-settings-chip-lbl {
+  color: #9aa0a6;
+}
+.bh-settings-shortcut-btn {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #e4e7eb;
+}
+.bh-settings-shortcut-btn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.bh-settings-about-box {
+  background-color: #16181c;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.bh-metric .bh-metric-val {
+  color: #ffffff;
+}
+.bh-metric .bh-metric-cap {
+  color: #9aa0a6;
+}
+.bh-services-filter-bar {
+  background-color: #16181c;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.bh-filter-chip {
+  color: #9aa0a6;
+}
+.bh-filter-chip:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+.bh-button-group {
+  background-color: #1a1d21;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.bh-sidebar-badge {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #9aa0a6;
+}
+.bh-sidebar list.navigation-sidebar row:selected .bh-sidebar-badge {
+  background-color: rgba(13, 110, 253, 0.2);
+  color: #0d6efd;
+}
+.bh-metric-icon-box {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #9aa0a6;
+}
+"""
+
+LIGHT_THEME_CSS = """
+@define-color window_bg_color #f6f8fa;
+@define-color window_fg_color #1f2328;
+@define-color view_bg_color #ffffff;
+@define-color view_fg_color #1f2328;
+@define-color headerbar_bg_color #ffffff;
+@define-color headerbar_fg_color #1f2328;
+@define-color card_bg_color #ffffff;
+@define-color card_fg_color #1f2328;
+@define-color card_border_color rgba(0, 0, 0, 0.08);
+
+window.background, .background {
+  background-color: #f6f8fa;
+  color: #1f2328;
+}
+.bh-sidebar {
+  background-color: #ffffff;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+.bh-brand {
+  color: #1f2328;
+}
+.bh-sidebar list.navigation-sidebar row {
+  color: #57606a;
+}
+.bh-sidebar list.navigation-sidebar row:hover:not(:selected) {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+.card, .boxed-list, list.boxed-list, .bh-metric {
+  background-color: #ffffff;
+  color: #1f2328;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.card:hover, .bh-metric:hover {
+  border-color: rgba(13, 110, 253, 0.3);
+  background-color: #fcfcfd;
+}
+list.boxed-list row {
+  color: #1f2328;
+}
+list.boxed-list row .dim-label, list.boxed-list row .subtitle {
+  color: #656d76;
+}
+preferencesgroup > box > box > label.title {
+  color: #1f2328;
+}
+preferencesgroup > box > box > label.subtitle {
+  color: #656d76;
+}
+searchentry, entry {
+  background-color: #ffffff;
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #1f2328;
+}
+.bh-settings-banner {
+  background: linear-gradient(135deg, rgba(13, 110, 253, 0.08) 0%, rgba(240, 246, 255, 0.9) 100%);
+  border-color: rgba(13, 110, 253, 0.2);
+}
+.bh-settings-chip {
+  background-color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(13, 110, 253, 0.15);
+}
+.bh-settings-chip:hover {
+  background-color: #ffffff;
+  border-color: rgba(13, 110, 253, 0.3);
+}
+.bh-settings-chip-val {
+  color: #1f2328;
+}
+.bh-settings-chip-lbl {
+  color: #656d76;
+}
+.bh-settings-shortcut-btn {
+  background-color: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #1f2328;
+}
+.bh-settings-shortcut-btn:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.18);
+}
+.bh-settings-save-box {
+  background-color: rgba(13, 110, 253, 0.08);
+  border-color: rgba(13, 110, 253, 0.25);
+}
+.bh-settings-about-box {
+  background-color: #ffffff;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.bh-metric .bh-metric-val {
+  color: #1f2328;
+}
+.bh-metric .bh-metric-cap {
+  color: #656d76;
+}
+.bh-services-filter-bar {
+  background-color: #ffffff;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.bh-filter-chip {
+  color: #656d76;
+}
+.bh-filter-chip:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #1f2328;
+}
+.bh-button-group {
+  background-color: #f0f2f5;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.bh-button-group button {
+  color: #1f2328;
+}
+headerbar .bh-button-group {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.bh-sidebar-badge {
+  background-color: rgba(0, 0, 0, 0.06);
+  color: #57606a;
+}
+.bh-sidebar list.navigation-sidebar row:selected .bh-sidebar-badge {
+  background-color: rgba(13, 110, 253, 0.15);
+  color: #0d6efd;
+}
+.bh-metric-icon-box {
+  background-color: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #57606a;
+}
+.bh-metric-icon-box.web {
+  background-color: rgba(13, 110, 253, 0.1);
+  border-color: rgba(13, 110, 253, 0.2);
+  color: #0969da;
+}
+.bh-metric-icon-box.php {
+  background-color: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.2);
+  color: #8250df;
+}
+.bh-metric-icon-box.db {
+  background-color: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.25);
+  color: #b05a00;
+}
+.bh-metric-icon-box.stack {
+  background-color: rgba(46, 194, 126, 0.12);
+  border-color: rgba(46, 194, 126, 0.25);
+  color: #1a7f37;
+}
+.bh-metric-icon-box.cpu {
+  background-color: rgba(13, 110, 253, 0.1);
+  border-color: rgba(13, 110, 253, 0.2);
+  color: #0969da;
+}
+.bh-metric-icon-box.net {
+  background-color: rgba(46, 194, 126, 0.12);
+  border-color: rgba(46, 194, 126, 0.25);
+  color: #1a7f37;
+}
+.bh-pill-on {
+  background: rgba(46, 194, 126, 0.14);
+  color: #1a7f37;
+  border-color: rgba(46, 194, 126, 0.35);
+}
+.bh-quick-btn {
+  color: #57606a;
+}
+.bh-quick-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #1f2328;
+}
+"""
+
+
+def update_theme_provider(is_dark: bool) -> None:
+    global _theme_provider
+    display = Gdk.Display.get_default()
+    if display is None:
+        return
+    if _theme_provider is None:
+        _theme_provider = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(
+            display, _theme_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 100
+        )
+    _theme_provider.load_from_string(DARK_THEME_CSS if is_dark else LIGHT_THEME_CSS)
+
+
 def apply_theme(scheme_name: str) -> None:
     sm = Adw.StyleManager.get_default()
     if scheme_name == "dark":
@@ -24,6 +335,7 @@ def apply_theme(scheme_name: str) -> None:
         sm.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
     else:
         sm.set_color_scheme(Adw.ColorScheme.DEFAULT)
+    update_theme_provider(sm.get_dark())
 
 
 class OmniServApp(Adw.Application):
@@ -44,6 +356,8 @@ class OmniServApp(Adw.Application):
         Adw.Application.do_startup(self)
         GLib.set_application_name("OmniServ")
         self._load_css()
+        sm = Adw.StyleManager.get_default()
+        sm.connect("notify::dark", lambda s, _p: update_theme_provider(s.get_dark()))
         apply_theme(cfg_str("color_scheme", "system"))
         # "quit" action the tray helper invokes over D-Bus (org.freedesktop.Application).
         act = Gio.SimpleAction.new("quit", None)
@@ -135,7 +449,7 @@ class OmniServApp(Adw.Application):
         provider = Gtk.CssProvider()
         provider.load_from_path(css)
         Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 50
         )
 
 

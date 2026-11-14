@@ -9,7 +9,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Adw, GLib, Gtk, Pango  # noqa: E402
 
 from ..metrics import CpuSampler, NetSampler, disk, memory, rate_str
 from ..widgets import PagedList, pill, status_dot
@@ -45,41 +45,36 @@ class DashboardPage(Gtk.Box):
         # natural width and just adds an h-scrollbar, so the cards never receive the narrowed
         # width and never reflow. NEVER forces the page width down onto the content.
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.clamp = Adw.Clamp(maximum_size=1150, tightening_threshold=800)
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18,
-                       margin_top=18, margin_bottom=18, margin_start=18, margin_end=18)
-        scroller.set_child(body)
+                       margin_top=18, margin_bottom=24, margin_start=18, margin_end=18)
+        self.clamp.set_child(body)
+        scroller.set_child(self.clamp)
         self.append(scroller)
 
-        # ── 6. Header: title + subtitle + segmented master control buttons ──
+        # ── 6. Header: title + subtitle ──
         head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         tb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
         tb.append(Gtk.Label(label="Dashboard", xalign=0, css_classes=["title-1"]))
         self.subtitle = Gtk.Label(label="", xalign=0, css_classes=["dim-label"])
         tb.append(self.subtitle)
         head.append(tb)
-
-        btn_group = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, css_classes=["bh-button-group", "linked"],
-                            valign=Gtk.Align.CENTER)
-        self.start_btn = Gtk.Button(label="Start all", icon_name="media-playback-start-symbolic")
-        self.start_btn.connect("clicked", lambda *_: self.win.run_verb(["start", "all"], "Starting all services…"))
-        self.stop_btn = Gtk.Button(label="Stop all", icon_name="media-playback-stop-symbolic")
-        self.stop_btn.connect("clicked", lambda *_: self.win.run_verb(["stop", "all"], "Stopping all services…"))
-        self.restart_btn = Gtk.Button(label="Restart", icon_name="view-refresh-symbolic")
-        self.restart_btn.connect("clicked", lambda *_: self.win.run_verb(["restart", "all"], "Restarting all services…"))
-        for b in (self.start_btn, self.stop_btn, self.restart_btn):
-            btn_group.append(b)
-        head.append(btn_group)
         body.append(head)
+
+        # Aliases to global HeaderBar master controls
+        self.start_btn = self.win.start_all_btn
+        self.stop_btn = self.win.stop_all_btn
+        self.restart_btn = self.win.restart_all_btn
 
         # ── 1 & 2. 8 cards in ONE responsive grid: Web/PHP/DB/Cache + CPU/Mem/Storage/Net ──
         cards = CardGrid()
-        self.c_web = self._status_card("Web Server")
-        self.c_php = self._status_card("PHP")
-        self.c_db = self._status_card("Database")
-        self.c_cache = self._status_card("Cache")
+        self.c_web = self._status_card("Web Server", "web-browser-symbolic", "web")
+        self.c_php = self._status_card("PHP", "application-x-addon-symbolic", "php")
+        self.c_db = self._status_card("Database", "drive-harddisk-symbolic", "db")
+        self.c_cache = self._status_card("Cache", "emblem-system-symbolic", "stack")
         self.cpu_card = self._cpu_card()
-        self.mem = self._bar_card("Memory")
-        self.disk = self._bar_card("Storage")
+        self.mem = self._bar_card("Memory", "media-flash-symbolic", "web")
+        self.disk = self._bar_card("Storage", "drive-harddisk-symbolic", "db")
         self.net_card = self._net_card()
         for c in (self.c_web["card"], self.c_php["card"], self.c_db["card"], self.c_cache["card"],
                   self.cpu_card["card"], self.mem["card"], self.disk["card"], self.net_card["card"]):
@@ -116,9 +111,18 @@ class DashboardPage(Gtk.Box):
         self._build_activity_console(body)
 
     # ── card builders ──
-    def _status_card(self, title: str) -> dict:
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, css_classes=["card", "bh-metric"])
-        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    def _status_card(self, title: str, icon_name: str = "", icon_class: str = "") -> dict:
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, css_classes=["card", "bh-metric"])
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, valign=Gtk.Align.CENTER)
+        if icon_name:
+            icon_box = Gtk.Box(
+                css_classes=["bh-metric-icon-box", icon_class] if icon_class else ["bh-metric-icon-box"],
+                valign=Gtk.Align.CENTER,
+            )
+            icon_img = Gtk.Image.new_from_icon_name(icon_name)
+            icon_img.set_pixel_size(18)
+            icon_box.append(icon_img)
+            top.append(icon_box)
         top.append(Gtk.Label(label=title, xalign=0, hexpand=True, css_classes=["bh-metric-cap", "dim-label"]))
         badge = pill("● Stopped", "bh-pill-off")
         top.append(badge)
@@ -126,14 +130,19 @@ class DashboardPage(Gtk.Box):
 
         val = Gtk.Label(label="—", xalign=0, css_classes=["bh-metric-val"], wrap=True,
                         wrap_mode=Pango.WrapMode.WORD_CHAR, max_width_chars=18)
-        sub = Gtk.Label(label="", xalign=0, css_classes=["dim-label", "caption"])
+        sub = Gtk.Label(label="", xalign=0, css_classes=["dim-label", "caption"], wrap=True)
         card.append(val)
         card.append(sub)
         return {"card": card, "val": val, "sub": sub, "badge": badge}
 
     def _cpu_card(self) -> dict:
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, css_classes=["card", "bh-metric"])
-        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, css_classes=["card", "bh-metric"])
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, valign=Gtk.Align.CENTER)
+        icon_box = Gtk.Box(css_classes=["bh-metric-icon-box", "cpu"], valign=Gtk.Align.CENTER)
+        icon_img = Gtk.Image.new_from_icon_name("utilities-system-monitor-symbolic")
+        icon_img.set_pixel_size(18)
+        icon_box.append(icon_img)
+        top.append(icon_box)
         top.append(Gtk.Label(label="CPU", xalign=0, hexpand=True, css_classes=["bh-metric-cap", "dim-label"]))
         badge = pill("0%", "bh-pill-blue")
         top.append(badge)
@@ -147,9 +156,18 @@ class DashboardPage(Gtk.Box):
         card.append(self.spark)
         return {"card": card, "val": val, "badge": badge}
 
-    def _bar_card(self, title: str) -> dict:
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, css_classes=["card", "bh-metric"])
-        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+    def _bar_card(self, title: str, icon_name: str = "", icon_class: str = "") -> dict:
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, css_classes=["card", "bh-metric"])
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, valign=Gtk.Align.CENTER)
+        if icon_name:
+            icon_box = Gtk.Box(
+                css_classes=["bh-metric-icon-box", icon_class] if icon_class else ["bh-metric-icon-box"],
+                valign=Gtk.Align.CENTER,
+            )
+            icon_img = Gtk.Image.new_from_icon_name(icon_name)
+            icon_img.set_pixel_size(18)
+            icon_box.append(icon_img)
+            top.append(icon_box)
         top.append(Gtk.Label(label=title, xalign=0, hexpand=True, css_classes=["bh-metric-cap", "dim-label"]))
         badge = pill("0%", "bh-pill-blue")
         top.append(badge)
@@ -164,8 +182,13 @@ class DashboardPage(Gtk.Box):
         return {"card": card, "val": val, "bar": bar, "badge": badge, "sub": sub}
 
     def _net_card(self) -> dict:
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, css_classes=["card", "bh-metric"])
-        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, css_classes=["card", "bh-metric"])
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, valign=Gtk.Align.CENTER)
+        icon_box = Gtk.Box(css_classes=["bh-metric-icon-box", "net"], valign=Gtk.Align.CENTER)
+        icon_img = Gtk.Image.new_from_icon_name("network-wireless-symbolic")
+        icon_img.set_pixel_size(18)
+        icon_box.append(icon_img)
+        top.append(icon_box)
         top.append(Gtk.Label(label="Network", xalign=0, hexpand=True, css_classes=["bh-metric-cap", "dim-label"]))
         badge = pill("Live", "bh-pill-on")
         top.append(badge)

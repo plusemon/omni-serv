@@ -55,15 +55,17 @@ class SitesPage(Gtk.Box):
 
         self.scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
         self.scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.clamp = Adw.Clamp(maximum_size=1150, tightening_threshold=800)
         self.body = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=18,
             margin_top=18,
-            margin_bottom=18,
+            margin_bottom=24,
             margin_start=18,
             margin_end=18,
         )
-        self.scroller.set_child(self.body)
+        self.clamp.set_child(self.body)
+        self.scroller.set_child(self.clamp)
         self.append(self.scroller)
 
         # ── 1. Header: title + subtitle + master action buttons ──
@@ -116,10 +118,10 @@ class SitesPage(Gtk.Box):
 
         # ── 2. Top Summary Metric Cards (CardGrid matching Services / Dashboard) ──
         cards = CardGrid()
-        self.c_sites = self._metric_card("Websites")
-        self.c_ssl = self._metric_card("SSL / Security")
-        self.c_web = self._metric_card("Web Server")
-        self.c_php = self._metric_card("Default PHP")
+        self.c_sites = self._metric_card("Websites", "web-browser-symbolic", "web")
+        self.c_ssl = self._metric_card("SSL / Security", "channel-secure-symbolic", "stack")
+        self.c_web = self._metric_card("Web Server", "applications-system-symbolic", "db")
+        self.c_php = self._metric_card("Default PHP", "application-x-addon-symbolic", "php")
         for c in (
             self.c_sites["card"],
             self.c_ssl["card"],
@@ -175,13 +177,23 @@ class SitesPage(Gtk.Box):
         self.body.append(self.empty_page)
 
     # ── Metric Card Builder (Matching Services / Dashboard status cards) ──
-    def _metric_card(self, title: str) -> dict:
+    def _metric_card(self, title: str, icon_name: str = "", icon_class: str = "") -> dict:
         card = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=4,
+            spacing=8,
             css_classes=["card", "bh-metric"],
         )
-        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, valign=Gtk.Align.CENTER)
+        if icon_name:
+            icon_box = Gtk.Box(
+                css_classes=["bh-metric-icon-box", icon_class] if icon_class else ["bh-metric-icon-box"],
+                valign=Gtk.Align.CENTER,
+            )
+            icon_img = Gtk.Image.new_from_icon_name(icon_name)
+            icon_img.set_pixel_size(18)
+            icon_box.append(icon_img)
+            top.append(icon_box)
+
         top.append(
             Gtk.Label(
                 label=title,
