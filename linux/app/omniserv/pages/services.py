@@ -4,8 +4,6 @@ inline category filters, and clean categorized service rows.
 from __future__ import annotations
 
 import os
-import shutil
-import subprocess
 
 import gi
 
@@ -13,7 +11,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk, Pango  # noqa: E402
 
-from ..widgets import pill, status_dot, status_pill
+from ..widgets import pill, status_dot
 from ._shared import CardGrid, _open_text_editor, clean_version
 
 SERVICE_GROUPS_DEF = [
@@ -25,10 +23,8 @@ SERVICE_GROUPS_DEF = [
     ("Runtimes", "node python"),
 ]
 
-FILTER_CHIPS = [
+FILTER_CATEGORIES = [
     ("all", "All"),
-    ("running", "Running"),
-    ("installed", "Installed"),
     ("php", "PHP"),
     ("web", "Web"),
     ("db", "Databases"),
@@ -41,7 +37,8 @@ class ServicesPage(Gtk.Box):
     def __init__(self, win) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.win = win
-        self._current_filter = "all"
+        self._current_status = "installed"  # "installed", "running", "all"
+        self._current_category = "all"
         self._search_query = ""
         self._last_services: list[dict] = []
         self._last_config: dict = {}
@@ -49,18 +46,20 @@ class ServicesPage(Gtk.Box):
 
         self.scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
         self.scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.clamp = Adw.Clamp(maximum_size=1150, tightening_threshold=800)
         self.body = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=18,
             margin_top=18,
-            margin_bottom=18,
+            margin_bottom=24,
             margin_start=18,
             margin_end=18,
         )
-        self.scroller.set_child(self.body)
+        self.clamp.set_child(self.body)
+        self.scroller.set_child(self.clamp)
         self.append(self.scroller)
 
-        # ── 1. Header: title + subtitle + segmented master control buttons ──
+        # ── 1. In-Page Header: Title & Subtitle ──
         head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         tb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
         tb.append(Gtk.Label(label="Services", xalign=0, css_classes=["title-1"]))
@@ -71,45 +70,14 @@ class ServicesPage(Gtk.Box):
         )
         tb.append(self.subtitle)
         head.append(tb)
-
-        btn_group = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL,
-            css_classes=["bh-button-group", "linked"],
-            valign=Gtk.Align.CENTER,
-        )
-
-        self.start_all_btn = Gtk.Button(
-            label="Start all", icon_name="media-playback-start-symbolic"
-        )
-        self.start_all_btn.connect(
-            "clicked",
-            lambda *_: self.win.run_verb(["start", "all"], "Starting all services…"),
-        )
-        self.stop_all_btn = Gtk.Button(
-            label="Stop all", icon_name="media-playback-stop-symbolic"
-        )
-        self.stop_all_btn.connect(
-            "clicked",
-            lambda *_: self.win.run_verb(["stop", "all"], "Stopping all services…"),
-        )
-        self.restart_all_btn = Gtk.Button(
-            label="Restart", icon_name="view-refresh-symbolic"
-        )
-        self.restart_all_btn.connect(
-            "clicked",
-            lambda *_: self.win.run_verb(["restart", "all"], "Restarting all services…"),
-        )
-        for b in (self.start_all_btn, self.stop_all_btn, self.restart_all_btn):
-            btn_group.append(b)
-        head.append(btn_group)
         self.body.append(head)
 
-        # ── 2. Top Summary Metric Cards (CardGrid matching Dashboard) ──
+        # ── 2. Top Summary Metric Cards (Enhanced with icons & hierarchy) ──
         cards = CardGrid()
-        self.c_web = self._metric_card("Web Server")
-        self.c_php = self._metric_card("PHP Engine")
-        self.c_db = self._metric_card("Database")
-        self.c_stack = self._metric_card("Stack Status")
+        self.c_web = self._metric_card("Web Server", "web-browser-symbolic", "web")
+        self.c_php = self._metric_card("PHP Engine", "application-x-addon-symbolic", "php")
+        self.c_db = self._metric_card("Database", "drive-harddisk-symbolic", "db")
+        self.c_stack = self._metric_card("Stack Status", "emblem-system-symbolic", "stack")
         for c in (
             self.c_web["card"],
             self.c_php["card"],
@@ -119,37 +87,55 @@ class ServicesPage(Gtk.Box):
             cards.add_card(c)
         self.body.append(cards)
 
-        # ── 3. Clean Inline Search & Category Filter Toolbar ──
-        filter_bar = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL,
-            spacing=10,
-            valign=Gtk.Align.CENTER,
-        )
+        # ── 3. Unified Search & Two-Tier Filter Toolbar ──
+        filter_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+
+        # Top row: Search input + Status segmented switcher (Installed / Running / All)
+        toolbar_top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, valign=Gtk.Align.CENTER)
 
         self.search_entry = Gtk.SearchEntry(
-            placeholder_text="Search services (e.g. php, nginx, mysql)…",
+            placeholder_text="Search services (e.g. php, nginx, mariadb)…",
         )
         self.search_entry.set_size_request(280, -1)
+        self.search_entry.set_hexpand(True)
         self.search_entry.connect("search-changed", self._on_search_changed)
-        filter_bar.append(self.search_entry)
+        toolbar_top.append(self.search_entry)
 
-        # Filter Chips
-        self.chips_row = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=6
-        )
-        self._chip_buttons: dict[str, Gtk.ToggleButton] = {}
-        for f_key, f_label in FILTER_CHIPS:
+        # Status Switcher
+        status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, css_classes=["bh-button-group", "linked"])
+        self.status_installed_btn = Gtk.ToggleButton(label="Installed", active=True)
+        self.status_running_btn = Gtk.ToggleButton(label="Running", active=False)
+        self.status_all_btn = Gtk.ToggleButton(label="All", active=False)
+
+        self.status_installed_btn.connect("toggled", lambda b: self._on_status_toggled("installed", b))
+        self.status_running_btn.connect("toggled", lambda b: self._on_status_toggled("running", b))
+        self.status_all_btn.connect("toggled", lambda b: self._on_status_toggled("all", b))
+
+        for b in (self.status_installed_btn, self.status_running_btn, self.status_all_btn):
+            status_box.append(b)
+        toolbar_top.append(status_box)
+        filter_container.append(toolbar_top)
+
+        # Bottom row: Scrollable Category Filter Pills
+        chips_scroll = Gtk.ScrolledWindow()
+        chips_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
+        chips_scroll.set_propagate_natural_width(True)
+
+        self.chips_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self._cat_buttons: dict[str, Gtk.ToggleButton] = {}
+        for c_key, c_label in FILTER_CATEGORIES:
             btn = Gtk.ToggleButton(
-                label=f_label,
-                active=(f_key == "all"),
+                label=c_label,
+                active=(c_key == "all"),
                 css_classes=["bh-filter-chip"],
             )
-            btn.connect("toggled", lambda b, k=f_key: self._on_chip_toggled(k, b))
-            self._chip_buttons[f_key] = btn
+            btn.connect("toggled", lambda b, k=c_key: self._on_cat_toggled(k, b))
+            self._cat_buttons[c_key] = btn
             self.chips_row.append(btn)
-        filter_bar.append(self.chips_row)
+        chips_scroll.set_child(self.chips_row)
+        filter_container.append(chips_scroll)
 
-        self.body.append(filter_bar)
+        self.body.append(filter_container)
 
         # ── 4. Services Sections Container ──
         self.list_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
@@ -159,19 +145,29 @@ class ServicesPage(Gtk.Box):
         self.empty_page = Adw.StatusPage(
             icon_name="system-search-symbolic",
             title="No matching services",
-            description="Try clearing your search query or selecting a different category filter.",
+            description="Try switching to 'All' or clearing your search query.",
         )
         self.empty_page.set_visible(False)
         self.body.append(self.empty_page)
 
-    # ── Metric Card Builder (Matching Dashboard status cards) ──
-    def _metric_card(self, title: str) -> dict:
+    # ── Metric Card Builder (With category icon and clear typography) ──
+    def _metric_card(self, title: str, icon_name: str, icon_class: str = "") -> dict:
         card = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=4,
+            spacing=8,
             css_classes=["card", "bh-metric"],
         )
-        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, valign=Gtk.Align.CENTER)
+
+        icon_box = Gtk.Box(
+            css_classes=["bh-metric-icon-box", icon_class] if icon_class else ["bh-metric-icon-box"],
+            valign=Gtk.Align.CENTER,
+        )
+        icon_img = Gtk.Image.new_from_icon_name(icon_name)
+        icon_img.set_pixel_size(18)
+        icon_box.append(icon_img)
+        top.append(icon_box)
+
         top.append(
             Gtk.Label(
                 label=title,
@@ -192,7 +188,7 @@ class ServicesPage(Gtk.Box):
             wrap_mode=Pango.WrapMode.WORD_CHAR,
             max_width_chars=18,
         )
-        sub = Gtk.Label(label="", xalign=0, css_classes=["dim-label", "caption"])
+        sub = Gtk.Label(label="", xalign=0, css_classes=["dim-label", "caption"], wrap=True)
         card.append(val)
         card.append(sub)
         return {"card": card, "val": val, "sub": sub, "badge": badge}
@@ -208,14 +204,30 @@ class ServicesPage(Gtk.Box):
         self._search_query = entry.get_text().strip().lower()
         self._render_services()
 
-    def _on_chip_toggled(self, key: str, button: Gtk.ToggleButton) -> None:
+    def _on_status_toggled(self, key: str, button: Gtk.ToggleButton) -> None:
         if not button.get_active():
-            if self._current_filter == key:
+            if self._current_status == key:
                 button.set_active(True)
             return
 
-        self._current_filter = key
-        for k, b in self._chip_buttons.items():
+        self._current_status = key
+        for k, b in (
+            ("installed", self.status_installed_btn),
+            ("running", self.status_running_btn),
+            ("all", self.status_all_btn),
+        ):
+            if k != key and b.get_active():
+                b.set_active(False)
+        self._render_services()
+
+    def _on_cat_toggled(self, key: str, button: Gtk.ToggleButton) -> None:
+        if not button.get_active():
+            if self._current_category == key:
+                button.set_active(True)
+            return
+
+        self._current_category = key
+        for k, b in self._cat_buttons.items():
             if k != key and b.get_active():
                 b.set_active(False)
         self._render_services()
@@ -230,22 +242,26 @@ class ServicesPage(Gtk.Box):
             if not (q in key or q in role or q in formula or q in version):
                 return False
 
-        f = self._current_filter
-        if f == "all":
+        # Status filter
+        st = self._current_status
+        if st == "installed" and not s.get("installed"):
+            return False
+        elif st == "running" and not s.get("running"):
+            return False
+
+        # Category filter
+        cat = self._current_category
+        if cat == "all":
             return True
-        elif f == "running":
-            return bool(s.get("running"))
-        elif f == "installed":
-            return bool(s.get("installed"))
-        elif f == "php":
+        elif cat == "php":
             return s.get("role") == "php"
-        elif f == "web":
+        elif cat == "web":
             return s.get("role") == "web"
-        elif f == "db":
+        elif cat == "db":
             return s.get("role") == "db"
-        elif f == "cache":
+        elif cat == "cache":
             return s.get("role") == "cache"
-        elif f == "tools":
+        elif cat == "tools":
             return s.get("role") in ("dns", "tls", "mail", "node", "python")
         return True
 
@@ -272,7 +288,7 @@ class ServicesPage(Gtk.Box):
         )
 
         self._update_metrics(services, cfg)
-        self._update_chip_labels(services)
+        self._update_filter_counts(services)
 
         if sig == self._sig:
             return
@@ -340,20 +356,26 @@ class ServicesPage(Gtk.Box):
             self.c_stack["sub"].set_label(f"{installed_count} installed available")
             self._set_card_badge(self.c_stack["badge"], "● Offline", "bh-pill-off")
 
-    def _update_chip_labels(self, services: list[dict]) -> None:
-        counts = {
-            "all": len(services),
-            "running": sum(1 for s in services if s.get("running")),
-            "installed": sum(1 for s in services if s.get("installed")),
+    def _update_filter_counts(self, services: list[dict]) -> None:
+        inst_cnt = sum(1 for s in services if s.get("installed"))
+        run_cnt = sum(1 for s in services if s.get("running"))
+        tot_cnt = len(services)
+
+        self.status_installed_btn.set_label(f"Installed ({inst_cnt})")
+        self.status_running_btn.set_label(f"Running ({run_cnt})")
+        self.status_all_btn.set_label(f"All ({tot_cnt})")
+
+        cat_counts = {
+            "all": tot_cnt,
             "php": sum(1 for s in services if s.get("role") == "php"),
             "web": sum(1 for s in services if s.get("role") == "web"),
             "db": sum(1 for s in services if s.get("role") == "db"),
             "cache": sum(1 for s in services if s.get("role") == "cache"),
             "tools": sum(1 for s in services if s.get("role") in ("dns", "tls", "mail", "node", "python")),
         }
-        for k, btn in self._chip_buttons.items():
-            base_label = next(lbl for key, lbl in FILTER_CHIPS if key == k)
-            count = counts.get(k, 0)
+        for k, btn in self._cat_buttons.items():
+            base_label = next(lbl for key, lbl in FILTER_CATEGORIES if key == k)
+            count = cat_counts.get(k, 0)
             btn.set_label(f"{base_label} ({count})")
 
     def _render_services(self) -> None:
@@ -380,9 +402,11 @@ class ServicesPage(Gtk.Box):
             if not group_svcs:
                 continue
 
+            # Sort: installed services first, then uninstalled
+            group_svcs.sort(key=lambda x: (not x.get("installed", False), not x.get("running", False), x.get("key", "")))
             total_visible_rows += len(group_svcs)
 
-            # Section Header (Clean Dashboard pattern)
+            # Section Header
             grp_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
             hdr_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
 
@@ -402,7 +426,7 @@ class ServicesPage(Gtk.Box):
             )
             grp_box.append(hdr_box)
 
-            # Boxed List (Matching Dashboard Websites list pattern)
+            # Boxed List
             listbox = Gtk.ListBox(
                 selection_mode=Gtk.SelectionMode.NONE,
                 css_classes=["boxed-list"],
@@ -420,7 +444,7 @@ class ServicesPage(Gtk.Box):
         if adj and pos:
             GLib.idle_add(lambda a=adj, p=pos: (a.set_value(p), False)[1])
 
-    # ── Flat, Clean Service Row (Dashboard Websites List pattern) ──
+    # ── Flat, Clean Service Row with Grouped Action Menu ──
     def _build_service_row(self, s: dict, def_php: str, def_web: str) -> Adw.ActionRow:
         key = s["key"]
         role = s.get("role", "")
@@ -431,8 +455,8 @@ class ServicesPage(Gtk.Box):
         ver_clean = clean_version(version_raw)
         formula = s.get("formula", "")
 
-        # Row Title & Subtitle
         row = Adw.ActionRow(title=key)
+        row.add_css_class("bh-service-row")
 
         sub_parts = []
         if ver_clean:
@@ -452,10 +476,10 @@ class ServicesPage(Gtk.Box):
 
         row.set_subtitle(" · ".join(sub_parts) if sub_parts else (formula or role.upper()))
 
-        # Status Dot (Clean 14px dot on the left, matching Dashboard sites list)
+        # Status Dot
         row.add_prefix(status_dot(running if installed else False))
 
-        # Suffix: Badges + Action Buttons
+        # Suffix: Badges + Clean Action Group
         suffix = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, valign=Gtk.Align.CENTER)
 
         # Default badges
@@ -470,14 +494,12 @@ class ServicesPage(Gtk.Box):
         else:
             suffix.append(pill("Not installed", "bh-pill-off"))
 
-        # Flat Quick Action Buttons (Dashboard style)
         if not installed:
             install_btn = Gtk.Button(
-                label="Install",
-                icon_name="list-add-symbolic",
                 css_classes=["suggested-action"],
                 valign=Gtk.Align.CENTER,
             )
+            install_btn.set_child(Adw.ButtonContent(icon_name="list-add-symbolic", label="Install"))
             install_btn.connect(
                 "clicked",
                 lambda *_, k=key: self.win.run_progress(
@@ -490,7 +512,7 @@ class ServicesPage(Gtk.Box):
             suffix.append(install_btn)
         else:
             actions_group = Gtk.Box(
-                orientation=Gtk.Orientation.HORIZONTAL, spacing=2, margin_start=4
+                orientation=Gtk.Orientation.HORIZONTAL, spacing=4, margin_start=4, valign=Gtk.Align.CENTER
             )
 
             # 1. Start / Stop Button
@@ -544,64 +566,85 @@ class ServicesPage(Gtk.Box):
             )
             actions_group.append(star)
 
-            # 3. Config / Setting Shortcuts
-            if role == "php":
-                ini_b = Gtk.Button(
-                    icon_name="document-edit-symbolic",
-                    tooltip_text="Edit php.ini",
-                    css_classes=["bh-quick-btn", "flat"],
-                )
-                ini_b.connect("clicked", lambda *_, k=key: self._edit_ini(k))
-                actions_group.append(ini_b)
-            elif role == "web":
-                conf_b = Gtk.Button(
-                    icon_name="document-edit-symbolic",
-                    tooltip_text="Server config",
-                    css_classes=["bh-quick-btn", "flat"],
-                )
-                conf_b.connect("clicked", lambda *_, k=key: self._open_web_config(k))
-                actions_group.append(conf_b)
-            elif role == "db" and key in ("mariadb", "mysql") and running:
-                pwd_b = Gtk.Button(
-                    icon_name="dialog-password-symbolic",
-                    tooltip_text="Set root password",
-                    css_classes=["bh-quick-btn", "flat"],
-                )
-                pwd_b.connect("clicked", lambda *_: self.win.db_root_dialog())
-                actions_group.append(pwd_b)
-
-            # 4. Update Button
-            upd_b = Gtk.Button(
-                icon_name="software-update-available-symbolic",
-                tooltip_text=f"Update {key}",
-                css_classes=["bh-quick-btn", "flat"],
-            )
-            upd_b.connect(
-                "clicked",
-                lambda *_, k=key: self.win.run_verb(["update", k], f"Updating {key}…"),
-            )
-            actions_group.append(upd_b)
-
-            # 5. Uninstall Button
-            rm_b = Gtk.Button(
-                icon_name="user-trash-symbolic",
-                tooltip_text=f"Uninstall {key}",
-                css_classes=["bh-quick-btn", "flat", "destructive-action"],
-            )
-            rm_b.connect(
-                "clicked",
-                lambda *_, k=key: self.win.confirm(
-                    f"Uninstall {key}?",
-                    "The service binary is removed; your data and configs stay.",
-                    lambda: self.win.run_verb(["uninstall", k], f"Uninstalling {key}…"),
-                ),
-            )
-            actions_group.append(rm_b)
+            # 3. Contextual More Actions Menu Button (...)
+            more_btn = self._build_more_menu(s)
+            actions_group.append(more_btn)
 
             suffix.append(actions_group)
 
         row.add_suffix(suffix)
         return row
+
+    def _build_more_menu(self, s: dict) -> Gtk.MenuButton:
+        key = s["key"]
+        role = s.get("role", "")
+        running = s.get("running", False)
+
+        btn = Gtk.MenuButton(
+            icon_name="view-more-symbolic",
+            tooltip_text="More actions",
+            css_classes=["bh-quick-btn", "flat"],
+        )
+        popover = Gtk.Popover()
+        menu_box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=4,
+            margin_top=6,
+            margin_bottom=6,
+            margin_start=6,
+            margin_end=6,
+        )
+
+        if role == "php":
+            b_ini = Gtk.Button(css_classes=["flat"])
+            b_ini.set_child(Adw.ButtonContent(icon_name="document-edit-symbolic", label="Edit php.ini"))
+            b_ini.connect("clicked", lambda *_, k=key: (popover.popdown(), self._edit_ini(k)))
+            menu_box.append(b_ini)
+        elif role == "web":
+            b_conf = Gtk.Button(css_classes=["flat"])
+            b_conf.set_child(Adw.ButtonContent(icon_name="document-edit-symbolic", label="Edit Server Config"))
+            b_conf.connect("clicked", lambda *_, k=key: (popover.popdown(), self._open_web_config(k)))
+            menu_box.append(b_conf)
+        elif role == "db" and key in ("mariadb", "mysql") and running:
+            b_pwd = Gtk.Button(css_classes=["flat"])
+            b_pwd.set_child(Adw.ButtonContent(icon_name="dialog-password-symbolic", label="Set Root Password"))
+            b_pwd.connect("clicked", lambda *_: (popover.popdown(), self.win.db_root_dialog()))
+            menu_box.append(b_pwd)
+
+        # Update Action
+        b_upd = Gtk.Button(css_classes=["flat"])
+        b_upd.set_child(Adw.ButtonContent(icon_name="software-update-available-symbolic", label=f"Update {key}"))
+        b_upd.connect(
+            "clicked",
+            lambda *_, k=key: (
+                popover.popdown(),
+                self.win.run_verb(["update", k], f"Updating {key}…"),
+            ),
+        )
+        menu_box.append(b_upd)
+
+        # Separator before destructive action
+        menu_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL, margin_top=2, margin_bottom=2))
+
+        # Uninstall Action
+        b_rm = Gtk.Button(css_classes=["flat", "destructive-action"])
+        b_rm.set_child(Adw.ButtonContent(icon_name="user-trash-symbolic", label="Uninstall Service"))
+        b_rm.connect(
+            "clicked",
+            lambda *_, k=key: (
+                popover.popdown(),
+                self.win.confirm(
+                    f"Uninstall {key}?",
+                    "The service binary is removed; your data and configs stay.",
+                    lambda: self.win.run_verb(["uninstall", k], f"Uninstalling {key}…"),
+                ),
+            ),
+        )
+        menu_box.append(b_rm)
+
+        popover.set_child(menu_box)
+        btn.set_popover(popover)
+        return btn
 
     # ── Config Editors ──
     def _edit_ini(self, key: str) -> None:
@@ -625,5 +668,3 @@ class ServicesPage(Gtk.Box):
                 _open_text_editor(c)
                 return
         self.win.toast(f"Configuration file for {key} not found")
-
-

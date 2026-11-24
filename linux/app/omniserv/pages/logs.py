@@ -26,19 +26,26 @@ LINE_LIMITS = [
 
 class LogsPage(Gtk.Box):
     def __init__(self, win) -> None:
-        super().__init__(
-            orientation=Gtk.Orientation.VERTICAL,
-            spacing=14,
-            margin_top=18,
-            margin_bottom=18,
-            margin_start=18,
-            margin_end=18,
-        )
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.win = win
         self._files: list[str] = []
         self._raw_lines: list[str] = []
         self._search_query = ""
         self._line_limit = 500
+
+        self.clamp = Adw.Clamp(maximum_size=1150, tightening_threshold=800, vexpand=True, hexpand=True)
+        self.container = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=14,
+            margin_top=18,
+            margin_bottom=24,
+            margin_start=18,
+            margin_end=18,
+            vexpand=True,
+            hexpand=True,
+        )
+        self.clamp.set_child(self.container)
+        self.append(self.clamp)
 
         # ── 1. Header: title + subtitle + quick actions ──
         head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -80,14 +87,14 @@ class LogsPage(Gtk.Box):
         btn_group.append(folder_b)
 
         head.append(btn_group)
-        self.append(head)
+        self.container.append(head)
 
         # ── 2. Top Summary Metric Cards (CardGrid) ──
         cards = CardGrid()
-        self.c_active = self._metric_card("Active Log")
-        self.c_total = self._metric_card("Total Logs")
-        self.c_errs = self._metric_card("Diagnostics")
-        self.c_loc = self._metric_card("Storage")
+        self.c_active = self._metric_card("Active Log", "text-x-generic-symbolic", "web")
+        self.c_total = self._metric_card("Total Logs", "folder-documents-symbolic", "php")
+        self.c_errs = self._metric_card("Diagnostics", "emblem-system-symbolic", "stack")
+        self.c_loc = self._metric_card("Storage", "drive-harddisk-symbolic", "db")
         for c in (
             self.c_active["card"],
             self.c_total["card"],
@@ -95,7 +102,7 @@ class LogsPage(Gtk.Box):
             self.c_loc["card"],
         ):
             cards.add_card(c)
-        self.append(cards)
+        self.container.append(cards)
 
         # ── 3. Control Toolbar: File selector + Search filter + Line count + Reload ──
         ctrl_bar = Gtk.Box(
@@ -134,7 +141,7 @@ class LogsPage(Gtk.Box):
         reload_b.connect("clicked", lambda *_: self._load())
         ctrl_bar.append(reload_b)
 
-        self.append(ctrl_bar)
+        self.container.append(ctrl_bar)
 
         # ── 4. Console Log Viewer (Dock Container) ──
         dock = Gtk.Box(
@@ -177,16 +184,26 @@ class LogsPage(Gtk.Box):
         scroller.set_child(self.text_view)
         dock.append(scroller)
 
-        self.append(dock)
+        self.container.append(dock)
 
     # ── Metric Card Builder ──
-    def _metric_card(self, title: str) -> dict:
+    def _metric_card(self, title: str, icon_name: str = "", icon_class: str = "") -> dict:
         card = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=4,
+            spacing=8,
             css_classes=["card", "bh-metric"],
         )
-        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, valign=Gtk.Align.CENTER)
+        if icon_name:
+            icon_box = Gtk.Box(
+                css_classes=["bh-metric-icon-box", icon_class] if icon_class else ["bh-metric-icon-box"],
+                valign=Gtk.Align.CENTER,
+            )
+            icon_img = Gtk.Image.new_from_icon_name(icon_name)
+            icon_img.set_pixel_size(18)
+            icon_box.append(icon_img)
+            top.append(icon_box)
+
         top.append(
             Gtk.Label(
                 label=title,

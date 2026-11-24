@@ -15,3 +15,8 @@ linux/dist/
 linux/packaging/omniserv.png
 **/__pycache__/
 *.pyc
+
+# Credentials and Service Accounts
+*service_account*.json
+*credentials*.json
+*.key
