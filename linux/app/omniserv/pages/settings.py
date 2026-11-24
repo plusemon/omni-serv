@@ -375,7 +375,7 @@ class SettingsPage(Gtk.Box):
         # Sudoers Helper
         self.helper_row = Adw.ActionRow(
             title="Password-less Service Control (Sudoers Helper)",
-            subtitle="Installs /etc/sudoers.d/omniserv rule so starting/stopping Nginx on :80/:443 never prompts for a password",
+            subtitle="Installs /etc/sudoers.d/omniserv rule so starting/stopping Nginx and services never prompts for a password",
         )
         self.helper_badge = pill("Checking…", "bh-pill-off")
         self.helper_btn = Gtk.Button(label="Configure", valign=Gtk.Align.CENTER)

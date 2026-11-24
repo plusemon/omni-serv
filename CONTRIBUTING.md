@@ -54,21 +54,26 @@ OmniServ/
 
 ## 🛠️ Development & Building
 
-### 🐧 Linux (Ubuntu / Debian)
+### 🐧 Linux (Ubuntu / Debian / Fedora / RHEL)
 
 **Prerequisites:**
 - Python 3.10+
-- GTK4 & libadwaita: `sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1`
-- Optional tray support: `gir1.2-ayatanaappindicator3-0.1` or `gir1.2-gtk-3.0`
+- GTK4 & libadwaita:
+  - Ubuntu/Debian: `sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1`
+  - Fedora/RHEL: `sudo dnf install python3-gobject gtk4 libadwaita`
+- Optional tray support: `gir1.2-ayatanaappindicator3-0.1` (Debian/Ubuntu) or `gnome-shell-extension-appindicator` (Fedora)
 
 **Running from source:**
 ```bash
 ./linux/app/bin/omniserv-gui
 ```
 
-**Building the `.deb` package:**
+**Building packages:**
 ```bash
-./linux/build.sh
+./linux/build.sh          # Auto-detects distribution (.deb or .rpm)
+./linux/build.sh --deb    # Build Debian package (.deb)
+./linux/build.sh --rpm    # Build Fedora package (.rpm)
+./linux/build.sh --all    # Build both .deb and .rpm packages
 ```
 
 ---

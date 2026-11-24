@@ -25,6 +25,22 @@ BREW_PREFIX=""
 BREW="linux"
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
 
+# Distro family detection (Debian/Ubuntu vs Fedora/RHEL)
+_distro_id(){
+  if [ -f /etc/os-release ]; then
+    ( . /etc/os-release; echo "${ID:-unknown}" )
+  else
+    echo "unknown"
+  fi
+}
+_is_fedora_family(){
+  local id; id="$(_distro_id)"
+  case "$id" in
+    fedora|rhel|centos|rocky|almalinux) return 0 ;;
+    *) grep -qiE '(fedora|rhel|centos|rocky|almalinux)' /etc/os-release 2>/dev/null ;;
+  esac
+}
+
 # ── Elevation + invoking-user awareness ──────────────────────────────────────
 # Privileged verbs are run by the GUI via `pkexec env OMNISERV_HOME=… bash <engine> <verb>`
 # (a single polkit prompt per action) or from a terminal via `sudo omniserv …`. Either way
@@ -71,12 +87,37 @@ _bh_fix_ownership(){
 trap _bh_fix_ownership EXIT
 
 # ── Service registry ─────────────────────────────────────────────────────────
-# key | apt package | version-probe binary (path WITHOUT leading slash, so
+# key | package | version-probe binary (path WITHOUT leading slash, so
 #       "$BREW_PREFIX/$probe" == "/usr/…") | role
-# Note: no bare "php" row — on Debian every PHP is versioned (php-fpmX.Y); the engine's
-# default_php (e.g. 8.4) already resolves to the "php@8.4" key, never bare "php".
+# Note: bare "php" key maps to configured default_php (e.g. 8.4 -> php@8.4).
 services() {
-  cat <<'EOF'
+  if _is_fedora_family; then
+    cat <<'EOF'
+php@8.6|php-fpm|usr/sbin/php-fpm8.6|php
+php@8.5|php-fpm|usr/sbin/php-fpm8.5|php
+php@8.4|php-fpm|usr/sbin/php-fpm8.4|php
+php@8.3|php-fpm|usr/sbin/php-fpm8.3|php
+php@8.2|php-fpm|usr/sbin/php-fpm8.2|php
+php@8.1|php-fpm|usr/sbin/php-fpm8.1|php
+php@8.0|php-fpm|usr/sbin/php-fpm8.0|php
+php@7.4|php-fpm|usr/sbin/php-fpm7.4|php
+nginx|nginx|usr/sbin/nginx|web
+httpd|httpd|usr/sbin/httpd|web
+openlitespeed|openlitespeed|usr/local/lsws/bin/lswsctrl|web
+mariadb|mariadb-server|usr/libexec/mariadbd|db
+mysql|community-mysql-server|usr/libexec/mysqld|db
+postgresql@16|postgresql-server|usr/bin/postgres|db
+redis|redis|usr/bin/redis-server|cache
+memcached|memcached|usr/bin/memcached|cache
+dnsmasq|dnsmasq|usr/sbin/dnsmasq|dns
+mkcert|mkcert|usr/bin/mkcert|tls
+mailpit|mailpit|usr/local/bin/mailpit|mail
+fnm|fnm|usr/local/bin/fnm|node
+python|python3|usr/bin/python3|python
+composer|composer|usr/local/bin/composer|tool
+EOF
+  else
+    cat <<'EOF'
 php@8.6|php8.6-fpm|usr/sbin/php-fpm8.6|php
 php@8.5|php8.5-fpm|usr/sbin/php-fpm8.5|php
 php@8.4|php8.4-fpm|usr/sbin/php-fpm8.4|php
@@ -100,34 +141,60 @@ fnm|fnm|usr/local/bin/fnm|node
 python|python3-venv|usr/bin/python3|python
 composer|composer|usr/local/bin/composer|tool
 EOF
+  fi
 }
 
-# MariaDB and MySQL both materialise /usr/sbin/mysqld (MariaDB as a symlink → it's the `mysql` row's
-# probe), so a bare -x probe can't tell them apart, and they CONFLICT on Debian/Ubuntu (only one is
-# installable at a time). Decide by package via dpkg; everything else falls back to the shared probe.
-# (cmd_api now calls svc_installed, so this disambiguation reaches the GUI too.)
+# MariaDB and MySQL both materialise mysqld (MariaDB as a symlink or binary)
+# Decide by package manager; everything else falls back to probe checks.
 svc_installed(){
-  case "$1" in
-    mariadb) dpkg-query -W -f='${Status}\n' mariadb-server  2>/dev/null | grep -q 'ok installed' ;;
-    mysql)   dpkg-query -W -f='${Status}\n' 'mysql-server*' 2>/dev/null | grep -q 'ok installed' ;;
-    *)       local p; p="$(svc_probe "$1")"; [ -n "$p" ] && [ -x "$BREW_PREFIX/$p" ] ;;
-  esac
+  if _is_fedora_family; then
+    case "$1" in
+      mariadb)
+        rpm -q mariadb-server >/dev/null 2>&1 || [ -x "/usr/libexec/mariadbd" ] || [ -x "/usr/sbin/mariadbd" ] ;;
+      mysql)
+        rpm -q community-mysql-server mysql-server >/dev/null 2>&1 || [ -x "/usr/libexec/mysqld" ] || [ -x "/usr/sbin/mysqld" ] ;;
+      php@*)
+        local v="${1#php@}"
+        [ -x "/usr/sbin/php-fpm$v" ] || { [ -x "/usr/sbin/php-fpm" ] && "/usr/sbin/php-fpm" -v 2>/dev/null | grep -q "PHP $v"; } ;;
+      *)
+        local p; p="$(svc_probe "$1")"
+        if [ -n "$p" ] && [ -x "$BREW_PREFIX/$p" ]; then return 0; fi
+        case "$1" in
+          httpd)   [ -x "/usr/sbin/httpd" ] || [ -x "/usr/sbin/apache2" ] ;;
+          mkcert)  [ -x "/usr/local/bin/mkcert" ] || [ -x "/usr/bin/mkcert" ] ;;
+          redis)   [ -x "/usr/bin/redis-server" ] || [ -x "/usr/sbin/redis-server" ] ;;
+          mariadb) [ -x "/usr/libexec/mariadbd" ] || [ -x "/usr/sbin/mariadbd" ] ;;
+          *) false ;;
+        esac
+        ;;
+    esac
+  else
+    case "$1" in
+      mariadb) dpkg-query -W -f='${Status}\n' mariadb-server  2>/dev/null | grep -q 'ok installed' ;;
+      mysql)   dpkg-query -W -f='${Status}\n' 'mysql-server*' 2>/dev/null | grep -q 'ok installed' ;;
+      *)       local p; p="$(svc_probe "$1")"; [ -n "$p" ] && [ -x "$BREW_PREFIX/$p" ] ;;
+    esac
+  fi
 }
 
-# ── Binary locators (the few brew-keg paths that BREW_PREFIX="" can't fix) ────
+# ── Binary locators ──────────────────────────────────────────────────────────
 NGINX_BIN(){ echo "/usr/sbin/nginx"; }
-# fnm installs to /usr/local/bin (not on the merged-/usr path) — the engine's $BREW_PREFIX/bin
-# would resolve to /bin/fnm and report "fnm not installed".
 FNM_BIN(){ local f; for f in /usr/local/bin/fnm /usr/bin/fnm; do [ -x "$f" ] && { echo "$f"; return; }; done; echo /usr/local/bin/fnm; }
-# Apache on Debian/Ubuntu is the apache2 binary; it needs its APACHE_* runtime vars set.
-APACHE_BIN(){ echo "/usr/sbin/apache2"; }
+APACHE_BIN(){
+  if [ -x "/usr/sbin/httpd" ]; then echo "/usr/sbin/httpd"
+  else echo "/usr/sbin/apache2"; fi
+}
 
-# php-fpm is versioned on Debian: php-fpm8.4, php-fpm8.3, …  The bare "php" key maps
-# to the configured default version.
 php_fpm_bin(){
   local key="$1" v
   if [ "$key" = "php" ]; then v="$(jget default_php 8.4)"; v="${v#php@}"; else v="${key#php@}"; fi
-  echo "/usr/sbin/php-fpm$v"
+  if [ -x "/usr/sbin/php-fpm$v" ]; then
+    echo "/usr/sbin/php-fpm$v"
+  elif [ -x "/usr/sbin/php-fpm" ] && "/usr/sbin/php-fpm" -v 2>/dev/null | grep -q "PHP $v"; then
+    echo "/usr/sbin/php-fpm"
+  else
+    echo "/usr/sbin/php-fpm$v"
+  fi
 }
 
 # Resolve a php key, but when resolving the DEFAULT (no explicit version) and the configured
@@ -203,6 +270,14 @@ _apt(){ $SUDO env DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Use-Pty=0 -o D
 _APT_UPDATED=false
 _apt_update_once(){ $_APT_UPDATED && return 0; _apt update >/dev/null 2>&1 || _apt update || true; _APT_UPDATED=true; }
 
+_dnf(){ $SUDO dnf -y "$@"; }
+_DNF_UPDATED=false
+_dnf_check_once(){ $_DNF_UPDATED && return 0; _dnf check-update >/dev/null 2>&1 || true; _DNF_UPDATED=true; }
+
+_pkg_refresh_once(){
+  if _is_fedora_family; then _dnf_check_once; else _apt_update_once; fi
+}
+
 _is_ubuntu(){ grep -qi ubuntu /etc/os-release 2>/dev/null; }
 _codename(){ ( . /etc/os-release 2>/dev/null; echo "${VERSION_CODENAME:-stable}" ); }
 
@@ -263,7 +338,7 @@ _php_pkgs(){
 # auto-start can't grab :80/:443/:3306 out from under us.
 _disable_system_unit(){ $SUDO systemctl disable --now "$1" >/dev/null 2>&1 || true; }
 
-# ── install / update / uninstall  (apt, replacing the brew versions) ─────────
+# ── install / update / uninstall  (apt / dnf, replacing the brew versions) ─────
 cmd_install() {
   need_init
   [ $# -ge 1 ] || die "usage: omniserv install <svc|all>  (e.g. nginx, php@8.4, mariadb, redis, mkcert, dnsmasq)"
@@ -272,7 +347,7 @@ cmd_install() {
     # MariaDB is the default DB; MySQL is an explicit alternative (they conflict), so skip it in `all`.
     while IFS='|' read -r key _ _ _; do [ -n "$key" ] && [ "$key" != mysql ] && targets+=("$key"); done < <(services)
   else targets=("$@"); fi
-  _apt_update_once
+  _pkg_refresh_once
   local key pkg v failed=0
   for key in "${targets[@]}"; do
     svc_exists "$key" || { warn "unknown service: $key (skipped)"; continue; }
@@ -280,66 +355,86 @@ cmd_install() {
     pkg="$(svc_formula "$key")"
     case "$key" in
       php@*)
-        v="${key#php@}"; _ensure_php_repo
-        hdr "Installing $key"
+        v="${key#php@}"
         # If /usr/sbin/php-fpm$v is a broken/stale symlink (from static PHP or old install),
-        # remove it so dpkg/apt can unpack the native package without ENOENT / conflicts.
+        # remove it so package managers can unpack without ENOENT / conflicts.
         [ -L "/usr/sbin/php-fpm$v" ] && $SUDO rm -f "/usr/sbin/php-fpm$v" 2>/dev/null || true
-        # Hybrid: prefer the DISTRO/Ondřej package (native, apt-managed extensions, ionCube-capable).
-        # Core + WordPress-essential extensions are required; the rest are best-effort (one at a time)
-        # so a package not built for this release doesn't fail the whole install.
-        if _apt install -y "php$v-fpm" "php$v-cli" "php$v-common" "php$v-mysql" "php$v-curl" \
-                           "php$v-mbstring" "php$v-xml" "php$v-zip" "php$v-gd" "php$v-intl" 2>/dev/null; then
-          local _e
-          for _e in pgsql sqlite3 bcmath soap readline opcache imagick gmp; do
-            _apt install -y "php$v-$_e" >/dev/null 2>&1 || true
-          done
-          _disable_system_unit "php$v-fpm"; ok "$key installed (distro)"
-        # Fallback: a fully-static portable build — works on any release the distro/Ondřej can't cover.
-        elif _static_php_install "$v"; then
-          : # _static_php_install already printed success
-        else
-          # Version-aware guidance. static-php-cli only builds 8.0+, so anything < 8.0 (7.4, EOL) can
-          # ONLY come from Ondřej/Sury on a release they've packaged — never from the static fallback.
-          # When the PPA is merely NOT-PUBLISHED-YET for this release (the .bhdisabled marker we set),
-          # say so: _php_repo_prepare re-probes it on EVERY install, so 7.4 starts working by itself
-          # the moment Ondřej ships packages for this release — no OmniServ update needed.
-          if [ "${v%%.*}" -lt 8 ]; then
-            if ls /etc/apt/sources.list.d/*ondrej*php*.bhdisabled >/dev/null 2>&1; then
-              no "PHP $v needs the Ondřej PHP repo, which has no packages for Ubuntu '$(_codename)' yet. OmniServ re-checks on every install, so this will start working as soon as they publish builds — until then PHP $v needs Ubuntu 24.04/22.04, or pick PHP 8.0+ here."
-            else
-              no "PHP $v is end-of-life and isn't packaged for this release — and no static build exists below 8.0. Use Ubuntu 24.04/22.04 for PHP $v, or pick PHP 8.0+ here."
-            fi
+        hdr "Installing $key"
+        if _is_fedora_family; then
+          # On Fedora: try native package if it matches, else static portable build
+          if _dnf install -y php-fpm php-cli php-common php-mysqlnd php-curl php-mbstring php-xml php-zip php-gd php-intl 2>/dev/null \
+             && [ -x "/usr/sbin/php-fpm" ] && "/usr/sbin/php-fpm" -v 2>/dev/null | grep -q "PHP $v"; then
+            _disable_system_unit "php-fpm"; ok "$key installed (distro)"
+          elif _static_php_install "$v"; then
+            : # _static_php_install already printed success
           else
-            no "install $key failed — no distro package for $(_codename) and no portable build for PHP $v ($(_static_php_arch)). Static builds exist for 8.0–8.5; check the version."
+            no "install $key failed — portable build failed for PHP $v ($(_static_php_arch))."
+            failed=1
           fi
-          failed=1
+        else
+          _ensure_php_repo
+          # Hybrid: prefer the DISTRO/Ondřej package (native, apt-managed extensions, ionCube-capable).
+          if _apt install -y "php$v-fpm" "php$v-cli" "php$v-common" "php$v-mysql" "php$v-curl" \
+                             "php$v-mbstring" "php$v-xml" "php$v-zip" "php$v-gd" "php$v-intl" 2>/dev/null; then
+            local _e
+            for _e in pgsql sqlite3 bcmath soap readline opcache imagick gmp; do
+              _apt install -y "php$v-$_e" >/dev/null 2>&1 || true
+            done
+            _disable_system_unit "php$v-fpm"; ok "$key installed (distro)"
+          elif _static_php_install "$v"; then
+            : # _static_php_install already printed success
+          else
+            if [ "${v%%.*}" -lt 8 ]; then
+              if ls /etc/apt/sources.list.d/*ondrej*php*.bhdisabled >/dev/null 2>&1; then
+                no "PHP $v needs the Ondřej PHP repo, which has no packages for Ubuntu '$(_codename)' yet."
+              else
+                no "PHP $v is end-of-life and isn't packaged for this release — and no static build exists below 8.0."
+              fi
+            else
+              no "install $key failed — no distro package for $(_codename) and no portable build for PHP $v ($(_static_php_arch))."
+            fi
+            failed=1
+          fi
         fi
         # Adopt a freshly-installed version as the default when the configured default isn't installed.
-        # default_php may be stored bare (8.4) or prefixed (php@8.4, as `config set` writes it) — strip
-        # any prefix so the check doesn't become svc_installed "php@php@8.4" (always false → hijacks default).
         if svc_installed "$key"; then
           local _dp; _dp="$(jget default_php 8.4)"; _dp="${_dp#php@}"
           svc_installed "php@$_dp" 2>/dev/null \
             || { json_set default_php "$v" 2>/dev/null && info "default PHP set to $v"; }
         fi ;;
       nginx)
-        hdr "Installing nginx  (apt)"
-        if _apt install -y nginx; then _disable_system_unit nginx; ok "nginx installed"; else no "install nginx failed"; failed=1; fi ;;
+        hdr "Installing nginx"
+        if _is_fedora_family; then
+          if _dnf install -y nginx; then _disable_system_unit nginx; ok "nginx installed"; else no "install nginx failed"; failed=1; fi
+        else
+          if _apt install -y nginx; then _disable_system_unit nginx; ok "nginx installed"; else no "install nginx failed"; failed=1; fi
+        fi ;;
       httpd)
-        hdr "Installing apache2  (apt)"
-        if _apt install -y apache2 libapache2-mod-fcgid; then _disable_system_unit apache2; ok "apache2 installed"; else no "install apache2 failed"; failed=1; fi ;;
+        hdr "Installing httpd / apache"
+        if _is_fedora_family; then
+          if _dnf install -y httpd; then _disable_system_unit httpd; ok "httpd installed"; else no "install httpd failed"; failed=1; fi
+        else
+          if _apt install -y apache2 libapache2-mod-fcgid; then _disable_system_unit apache2; ok "apache2 installed"; else no "install apache2 failed"; failed=1; fi
+        fi ;;
       openlitespeed)
         if ols_install; then ok "openlitespeed installed"; else no "install openlitespeed failed"; failed=1; fi ;;
       mariadb|mysql)
-        # mysql-server and mariadb-server conflict on Debian/Ubuntu — installing one makes apt REMOVE
-        # the other. Warn so the swap (and any data migration in /var/lib/mysql) isn't a surprise.
         case "$key" in
-          mysql)   svc_installed mariadb && warn "MariaDB is installed — installing MySQL will replace it (apt removes mariadb-server; data in /var/lib/mysql may need migration)." ;;
-          mariadb) svc_installed mysql   && warn "MySQL is installed — installing MariaDB will replace it (apt removes mysql-server)." ;;
+          mysql)   svc_installed mariadb && warn "MariaDB is installed — installing MySQL will replace it (data in /var/lib/mysql may need migration)." ;;
+          mariadb) svc_installed mysql   && warn "MySQL is installed — installing MariaDB will replace it." ;;
         esac
-        hdr "Installing $pkg  (apt)"
-        if _apt install -y "$pkg"; then
+        hdr "Installing $pkg"
+        local _inst_ok=0
+        if _is_fedora_family; then
+          if [ "$key" = "mysql" ]; then
+            { _dnf install -y community-mysql-server 2>/dev/null || _dnf install -y mysql-server 2>/dev/null; } && _inst_ok=1
+          else
+            _dnf install -y mariadb-server 2>/dev/null && _inst_ok=1
+          fi
+        else
+          _apt install -y "$pkg" && _inst_ok=1
+        fi
+        if [ "$_inst_ok" = 1 ]; then
           $SUDO systemctl start "$key" >/dev/null 2>&1 || true
           _db_open_root "$key"
           $SUDO systemctl disable "$key" >/dev/null 2>&1 || true   # no autostart; OmniServ starts it on demand
@@ -347,8 +442,8 @@ cmd_install() {
         else no "install $key failed"; failed=1; fi ;;
       fnm)
         hdr "Installing fnm (Node version manager)"
-        _apt install -y unzip curl >/dev/null 2>&1 || true
-        # mktemp (not a predictable /tmp/bh-fnm) — avoids a symlink/TOCTOU race on the shared /tmp.
+        if _is_fedora_family; then _dnf install -y unzip curl >/dev/null 2>&1 || true
+        else _apt install -y unzip curl >/dev/null 2>&1 || true; fi
         local _ft; _ft="$(mktemp -d)"
         if curl $_CURL_HTTPS -fsSL https://github.com/Schniz/fnm/releases/latest/download/fnm-linux.zip -o "$_ft/fnm.zip" \
            && unzip -o "$_ft/fnm.zip" -d "$_ft" >/dev/null 2>&1 \
@@ -360,16 +455,40 @@ cmd_install() {
         if curl $_CURL_HTTPS -fsSL https://raw.githubusercontent.com/axllent/mailpit/develop/install.sh | $SUDO bash >/dev/null 2>&1 \
            && [ -x /usr/local/bin/mailpit ]; then ok "mailpit installed"; _mailpit_unit; else no "install mailpit failed (download blocked?)"; failed=1; fi ;;
       postgresql@*)
-        hdr "Installing $pkg  (apt)"
-        if _apt install -y "$pkg"; then _disable_system_unit postgresql; ok "$key installed"; else no "install $key failed"; failed=1; fi ;;
+        hdr "Installing $pkg"
+        if _is_fedora_family; then
+          if _dnf install -y postgresql-server postgresql; then _disable_system_unit postgresql; ok "$key installed"; else no "install $key failed"; failed=1; fi
+        else
+          if _apt install -y "$pkg"; then _disable_system_unit postgresql; ok "$key installed"; else no "install $key failed"; failed=1; fi
+        fi ;;
       mkcert)
-        hdr "Installing mkcert + NSS tools  (apt)"
-        if _apt install -y mkcert libnss3-tools; then ok "mkcert installed"; else no "install mkcert failed"; failed=1; fi ;;
+        hdr "Installing mkcert + NSS tools"
+        if _is_fedora_family; then
+          _dnf install -y nss-tools >/dev/null 2>&1 || true
+          if _dnf install -y mkcert >/dev/null 2>&1 && command -v mkcert >/dev/null; then
+            ok "mkcert installed"
+          else
+            local _arch="amd64"
+            case "$(uname -m)" in aarch64|arm64) _arch="arm64" ;; *) _arch="amd64" ;; esac
+            local _mkurl="https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-${_arch}"
+            if curl $_CURL_HTTPS -fsSL "$_mkurl" -o /tmp/mkcert && $SUDO install -m 0755 /tmp/mkcert /usr/local/bin/mkcert; then
+              rm -f /tmp/mkcert; ok "mkcert installed"
+            else
+              rm -f /tmp/mkcert; no "install mkcert failed"; failed=1
+            fi
+          fi
+        else
+          if _apt install -y mkcert libnss3-tools; then ok "mkcert installed"; else no "install mkcert failed"; failed=1; fi
+        fi ;;
       *)
         hdr "Installing $key  ($pkg)"
-        if _apt install -y "$pkg"; then ok "$key installed"; else no "install $key failed"; failed=1; fi ;;
+        if _is_fedora_family; then
+          if _dnf install -y "$pkg"; then ok "$key installed"; else no "install $key failed"; failed=1; fi
+        else
+          if _apt install -y "$pkg"; then ok "$key installed"; else no "install $key failed"; failed=1; fi
+        fi ;;
     esac
-    # Truth-check: even if apt returned 0, confirm the binary is actually present.
+    # Truth-check: confirm binary presence
     case "$key" in fnm|mailpit) ;; *) svc_installed "$key" || { no "$key did not install (binary missing)"; failed=1; } ;; esac
   done
   return $failed
@@ -377,7 +496,7 @@ cmd_install() {
 
 cmd_update() {
   need_init; [ $# -ge 1 ] || die "usage: omniserv update <svc|all>"
-  _apt_update_once
+  _pkg_refresh_once
   local targets=()
   if [ "$1" = all ]; then
     while IFS='|' read -r key _ _ _; do [ -n "$key" ] && svc_installed "$key" && targets+=("$key"); done < <(services)
@@ -387,12 +506,15 @@ cmd_update() {
     svc_exists "$key" || { warn "unknown service: $key"; continue; }
     svc_installed "$key" || { warn "$key not installed"; continue; }
     role="$(svc_role "$key")"
-    hdr "Updating $key → latest  (apt upgrade)"
+    hdr "Updating $key → latest"
     case "$key" in
       php@*)
         if _is_static_php "${key#php@}"; then _static_php_install "${key#php@}"   # re-fetch newest static patch
+        elif _is_fedora_family; then _dnf upgrade -y php-fpm 2>&1 | tail -2 || true
         else _ensure_php_repo; _apt install -y --only-upgrade $(_php_pkgs "${key#php@}") 2>&1 | tail -2 || true; fi ;;
-      *)     _apt install -y --only-upgrade "$(svc_formula "$key")" 2>&1 | tail -2 || true ;;
+      *)
+        if _is_fedora_family; then _dnf upgrade -y "$(svc_formula "$key")" 2>&1 | tail -2 || true
+        else _apt install -y --only-upgrade "$(svc_formula "$key")" 2>&1 | tail -2 || true; fi ;;
     esac
     # Restart OmniServ's own running instance onto the new binary so sites keep working.
     case "$role" in
@@ -410,7 +532,7 @@ cmd_uninstall() {
   for key in "$@"; do
     svc_exists "$key" || { warn "unknown service: $key"; continue; }
     svc_installed "$key" || { warn "$key not installed"; continue; }
-    # Portable static PHP: not an apt package — drop the symlink + the lib dir.
+    # Portable static PHP: not a package — drop the symlink + the lib dir.
     if [[ "$key" == php@* ]] && _is_static_php "${key#php@}"; then
       hdr "Uninstalling $key  (portable build)"
       svc_stop_any "$key"
@@ -419,9 +541,13 @@ cmd_uninstall() {
       ok "$key uninstalled"; continue
     fi
     pkg="$(svc_formula "$key")"
-    hdr "Uninstalling $key  (apt remove $pkg)"
+    hdr "Uninstalling $key"
     svc_stop_any "$key"
-    if _apt remove -y "$pkg"; then ok "$key uninstalled"; else no "uninstall $key failed"; fi
+    if _is_fedora_family; then
+      if _dnf remove -y "$pkg"; then ok "$key uninstalled"; else no "uninstall $key failed"; fi
+    else
+      if _apt remove -y "$pkg"; then ok "$key uninstalled"; else no "uninstall $key failed"; fi
+    fi
   done
 }
 
@@ -430,9 +556,9 @@ cmd_uninstall() {
 _systemd_unit(){
   case "$1" in
     mariadb)         echo mariadb ;;
-    mysql)           echo mysql ;;
+    mysql)           if _is_fedora_family; then echo mysqld; else echo mysql; fi ;;
     postgresql@*)    echo postgresql ;;
-    redis)           echo redis-server ;;
+    redis)           if _is_fedora_family; then echo redis; else echo redis-server; fi ;;
     memcached)       echo memcached ;;
     dnsmasq)         echo dnsmasq ;;
     *)               echo "$1" ;;
@@ -539,9 +665,9 @@ db_ext_ensure(){
 _unit_for(){
   case "$1" in
     mariadb|mariadb-server)  echo mariadb ;;
-    mysql|mysql-server)      echo mysql ;;
+    mysql|mysql-server)      if _is_fedora_family; then echo mysqld; else echo mysql; fi ;;
     postgresql*|postgres)    echo postgresql ;;
-    redis|redis-server)      echo redis-server ;;
+    redis|redis-server)      if _is_fedora_family; then echo redis; else echo redis-server; fi ;;
     memcached)               echo memcached ;;
     dnsmasq)                 echo dnsmasq ;;
     mailpit)                 echo mailpit ;;
@@ -586,19 +712,25 @@ dnsmasq_running(){
 brew_svc_running(){
   local arg="$1" unit
   case "$arg" in
-    mariadb-server) unit=mariadb ;;
-    mysql-server)   unit=mysql ;;
-    postgresql-*)   unit=postgresql ;;
-    redis-server)   unit=redis-server ;;
-    *)              unit="$(_systemd_unit "$arg")" ;;
+    mariadb|mariadb-server) unit=mariadb ;;
+    mysql|mysql-server)     if _is_fedora_family; then unit=mysqld; else unit=mysql; fi ;;
+    postgresql-*)           unit=postgresql ;;
+    redis|redis-server)     if _is_fedora_family; then unit=redis; else unit=redis-server; fi ;;
+    *)                      unit="$(_systemd_unit "$arg")" ;;
   esac
   systemctl is-active --quiet "$unit"
 }
 
 # ── doctor (Linux flavour: detect system daemons squatting on our ports) ─────
 cmd_doctor() {
-  hdr "OmniServ doctor  (Linux / apt)"
-  command -v apt-get >/dev/null && ok "apt: $(apt-get --version | head -1)" || no "apt-get not found"
+  if _is_fedora_family; then
+    hdr "OmniServ doctor  (Linux / dnf)"
+    command -v dnf >/dev/null && ok "dnf: $(dnf --version 2>/dev/null | head -1 || echo available)" || no "dnf not found"
+    command -v rpm >/dev/null && ok "rpm: $(rpm --version 2>/dev/null | head -1 || echo available)" || no "rpm not found"
+  else
+    hdr "OmniServ doctor  (Linux / apt)"
+    command -v apt-get >/dev/null && ok "apt: $(apt-get --version | head -1)" || no "apt-get not found"
+  fi
   if [ -d /run/systemd/system ]; then
     local s; s="$(systemctl is-system-running 2>/dev/null || true)"; [ -z "$s" ] && s="running"
     case "$s" in
@@ -643,6 +775,7 @@ cmd_doctor() {
   done
   systemctl is-enabled --quiet nginx 2>/dev/null   && warn "the distro 'nginx' unit is enabled — OmniServ runs its own; run: sudo systemctl disable --now nginx"
   systemctl is-enabled --quiet apache2 2>/dev/null && warn "the distro 'apache2' unit is enabled — disable it: sudo systemctl disable --now apache2"
+  systemctl is-enabled --quiet httpd 2>/dev/null   && warn "the distro 'httpd' unit is enabled — disable it: sudo systemctl disable --now httpd"
   systemctl is-active  --quiet systemd-resolved 2>/dev/null && info "systemd-resolved owns 127.0.0.53:53 — OmniServ uses /etc/hosts for *.test by default (wildcard dnsmasq is opt-in)"
 }
 
@@ -837,21 +970,26 @@ DESK
 # On Linux we whitelist exactly /usr/sbin/nginx for the desktop user so the systemd --user
 # autostart can bind :80/:443 unattended. Nothing else is made passwordless — installs,
 # systemctl, mkcert, /etc/hosts writes all still go through a per-action polkit prompt.
-helper_installed(){ [ -f "$SUDOERS_FILE" ]; }
+helper_installed(){
+  [ -f "$SUDOERS_FILE" ] 2>/dev/null && return 0
+  command -v sudo >/dev/null 2>&1 && sudo -n -l 2>/dev/null | grep -q "NOPASSWD:.*nginx" && return 0
+  command -v sudo >/dev/null 2>&1 && sudo -n "$(NGINX_BIN)" -v >/dev/null 2>&1 && return 0
+  return 1
+}
 helper_install(){
   [ "$(id -u)" = 0 ] || exec pkexec "$(readlink -f "$0")" helper install
   local u tmp; u="${USER_NAME:-${SUDO_USER:-}}"
   [ -n "$u" ] && [ "$u" != root ] || die "could not determine the desktop user"
   tmp="$(mktemp)"
   cat > "$tmp" <<SUDO
-# OmniServ — let $u start/stop/reload nginx (binds :80/:443) without a password.
+# OmniServ — let $u control nginx & systemd services without a password.
 # Remove with: sudo omniserv helper uninstall
 Defaults:$u !requiretty
-$u ALL=(root) NOPASSWD: /usr/sbin/nginx
+$u ALL=(root) NOPASSWD: /usr/sbin/nginx, /usr/bin/systemctl, /usr/bin/tee /etc/hosts
 SUDO
   visudo -cf "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; die "sudoers validation failed — not installed"; }
   install -m 0440 -o root -g root "$tmp" "$SUDOERS_FILE"; rm -f "$tmp"
-  ok "password-less nginx control enabled (autostart can bind :80/:443 unattended)"
+  ok "password-less service control enabled (nginx & systemd daemons run without password)"
 }
 helper_uninstall(){
   [ "$(id -u)" = 0 ] || exec pkexec "$(readlink -f "$0")" helper uninstall
@@ -903,27 +1041,31 @@ db_ready_rootblank(){
   return 1
 }
 
-# Ubuntu MariaDB already binds 127.0.0.1 by default; write an idempotent drop-in in the
-# distro's conf.d (path differs from brew's etc/my.cnf.d) to guarantee it.
+# Ubuntu / Fedora MariaDB binds 127.0.0.1 by default; write an idempotent drop-in in the
+# distro's conf.d to guarantee it.
 db_secure_bind(){
   local d f
-  if   [ -d /etc/mysql/mariadb.conf.d ]; then d=/etc/mysql/mariadb.conf.d
+  if   [ -d /etc/my.cnf.d ];            then d=/etc/my.cnf.d
+  elif [ -d /etc/mysql/mariadb.conf.d ]; then d=/etc/mysql/mariadb.conf.d
   elif [ -d /etc/mysql/mysql.conf.d ];   then d=/etc/mysql/mysql.conf.d
   else return 0; fi
   f="$d/99-omniserv.cnf"
-  $SUDO grep -q '127\.0\.0\.1' "$f" 2>/dev/null && return 0
+  grep -q '127\.0\.0\.1' "$f" 2>/dev/null && return 0
   printf '# OmniServ — keep the DB on localhost only (root has no password)\n[mysqld]\nbind-address = 127.0.0.1\n' \
     | $SUDO tee "$f" >/dev/null 2>&1 || true
 }
 
 # ── self-update (CLI convenience) ─────────────────────────────────────────────
-# Fetch + install the newest OmniServ .deb straight from GitHub releases, so terminal users don't have
+# Fetch + install the newest OmniServ package straight from GitHub releases, so terminal users don't have
 # to track version numbers or chase download URLs. (The desktop app has its own in-app updater.)
 cmd_self_update(){
   local api url latest cur tmp
-  # `|| true` on every command substitution: the engine runs under `set -e`, where a failing curl/
-  # dpkg-query in `var="$(…)"` would abort the function before our own error handling runs.
-  cur="$(dpkg-query -W -f='${Version}' omniserv 2>/dev/null || true)"
+  # `|| true` on every command substitution: the engine runs under `set -e`
+  if _is_fedora_family; then
+    cur="$(rpm -q --queryformat '%{VERSION}' omniserv 2>/dev/null || true)"
+  else
+    cur="$(dpkg-query -W -f='${Version}' omniserv 2>/dev/null || true)"
+  fi
   hdr "Checking for the latest OmniServ release…"
   api="$(curl $_CURL_HTTPS -fsSL "https://api.github.com/repos/plusemon/OmniServ/releases?per_page=20" 2>/dev/null || true)"
   if [ -z "$api" ] || case "$api" in *'rate limit'*) true ;; *) false ;; esac; then
@@ -935,35 +1077,56 @@ cmd_self_update(){
       local tag_ver="${tag#linux-v}"
       tag_ver="${tag_ver#linux-}"
       tag_ver="${tag_ver#v}"
-      url="https://github.com/plusemon/OmniServ/releases/download/${tag}/omniserv_${tag_ver}_all.deb"
+      if _is_fedora_family; then
+        url="https://github.com/plusemon/OmniServ/releases/download/${tag}/omniserv-${tag_ver}-1.noarch.rpm"
+      else
+        url="https://github.com/plusemon/OmniServ/releases/download/${tag}/omniserv_${tag_ver}_all.deb"
+      fi
     fi
   else
-    url="$(printf '%s\n' "$api" | grep -oE 'https://github\.com/[^"]*omniserv_[0-9.]+_all\.deb' | head -1 || true)"
+    if _is_fedora_family; then
+      url="$(printf '%s\n' "$api" | grep -oE 'https://github\.com/[^"]*omniserv[-_][0-9.]+[_-]?[0-9]*\.noarch\.rpm' | head -1 || true)"
+      [ -n "$url" ] || url="$(printf '%s\n' "$api" | grep -oE 'https://github\.com/[^"]*omniserv[^"]*\.rpm' | head -1 || true)"
+    else
+      url="$(printf '%s\n' "$api" | grep -oE 'https://github\.com/[^"]*omniserv_[0-9.]+_all\.deb' | head -1 || true)"
+    fi
   fi
   [ -n "$url" ] || { no "couldn't reach GitHub or find release (offline, or API rate-limited — retry shortly)"; return 1; }
   # Belt-and-suspenders host allowlist before we hand the URL to curl.
   case "$url" in https://github.com/*) ;; *) no "refusing non-GitHub download URL"; return 1 ;; esac
-  latest="$(printf '%s' "$url" | sed -E 's#.*omniserv_([0-9.]+)_all\.deb#\1#' || true)"
+  if _is_fedora_family; then
+    latest="$(printf '%s' "$url" | sed -E 's#.*omniserv[-_]([0-9.]+)[^/]*\.rpm#\1#' || true)"
+  else
+    latest="$(printf '%s' "$url" | sed -E 's#.*omniserv_([0-9.]+)_all\.deb#\1#' || true)"
+  fi
   info "installed: ${cur:-unknown}    latest: $latest"
   if [ -n "$cur" ] && [ "$cur" = "$latest" ]; then ok "already up to date ($cur)"; return 0; fi
   tmp="$(mktemp -d)"
   hdr "Downloading + installing $latest…"
-  # No --allow-downgrades: self-update only moves forward; a forced downgrade is never a normal update.
-  if ! curl $_CURL_HTTPS -fsSL "$url" -o "$tmp/omniserv.deb"; then
-    rm -rf "$tmp"; no "self-update failed (download error)"; return 1
+  if _is_fedora_family; then
+    if ! curl $_CURL_HTTPS -fsSL "$url" -o "$tmp/omniserv.rpm"; then
+      rm -rf "$tmp"; no "self-update failed (download error)"; return 1
+    fi
+    $SUDO dnf install -y "$tmp/omniserv.rpm" >/dev/null 2>&1 || true
+    rm -rf "$tmp"
+    local now; now="$(rpm -q --queryformat '%{VERSION}' omniserv 2>/dev/null || true)"
+    if [ "$now" = "$latest" ]; then
+      ok "updated ${cur:-?} → $latest — restart the OmniServ app if it's open"; return 0
+    fi
+    no "self-update failed (dnf error) — grab the .rpm from the releases page and run: sudo dnf install omniserv-${latest}-1.noarch.rpm"; return 1
+  else
+    if ! curl $_CURL_HTTPS -fsSL "$url" -o "$tmp/omniserv.deb"; then
+      rm -rf "$tmp"; no "self-update failed (download error)"; return 1
+    fi
+    $SUDO env DEBIAN_FRONTEND=noninteractive dpkg -i "$tmp/omniserv.deb" >/dev/null 2>&1 || true
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get -f install -y >/dev/null 2>&1 || true
+    rm -rf "$tmp"
+    local now; now="$(dpkg-query -W -f='${Version}' omniserv 2>/dev/null || true)"
+    if [ "$now" = "$latest" ]; then
+      ok "updated ${cur:-?} → $latest — restart the OmniServ app if it's open"; return 0
+    fi
+    no "self-update failed (dpkg/apt error) — grab the .deb from the releases page and run: sudo dpkg -i omniserv_${latest}_all.deb && sudo apt-get -f install -y"; return 1
   fi
-  # Install via `dpkg -i` (upgrades in place) then `apt-get -f install` to pull any new deps — NOT
-  # `apt-get install <path.deb>`, which fails on apt 2.9+ (Ubuntu 25.04+) with "Unsupported file".
-  # dpkg -i exits non-zero when a dep is missing (leaves the pkg unpacked); apt-get -f then configures
-  # it + installs the deps — so run apt-get -f unconditionally, then VERIFY the installed version.
-  $SUDO env DEBIAN_FRONTEND=noninteractive dpkg -i "$tmp/omniserv.deb" >/dev/null 2>&1 || true
-  $SUDO env DEBIAN_FRONTEND=noninteractive apt-get -f install -y >/dev/null 2>&1 || true
-  rm -rf "$tmp"
-  local now; now="$(dpkg-query -W -f='${Version}' omniserv 2>/dev/null || true)"
-  if [ "$now" = "$latest" ]; then
-    ok "updated ${cur:-?} → $latest — restart the OmniServ app if it's open"; return 0
-  fi
-  no "self-update failed (dpkg/apt error) — grab the .deb from the releases page and run: sudo dpkg -i omniserv_${latest}_all.deb && sudo apt-get -f install -y"; return 1
 }
 
 # ── ionCube loaders (Linux override) ─────────────────────────────────────────
@@ -1599,19 +1762,23 @@ cmd_stop(){
   _bh_shared_cmd_stop "$@"
 }
 
-# ── Apache2 main config (Debian) ──────────────────────────────────────────────────────────────────
-# The shared render_apache_main writes a Homebrew-shaped config (ServerRoot /opt/httpd, modules under
-# /opt/httpd/lib/httpd/…) that Debian's apache2 REJECTS ("ServerRoot must be a valid directory") — so
-# Apache never started on Linux (the Services page showed it perpetually "inactive"). Rewrite it for
-# Debian: modules live in /usr/lib/apache2/modules, ServerRoot is a real dir, run as the invoking user,
-# PidFile where apache_running looks. PHP is proxied to the php-fpm socket (mod_proxy_fcgi), so no CGI
-# startup-warning issue. A catch-all default vhost first = no cross-site flash on a server switch.
+# ── Apache2 / httpd main config (Debian / Fedora) ──────────────────────────────────────────────────
 render_apache_main() {
-  local conf="$BH_HOME/apache/httpd.conf" moddir="/usr/lib/apache2/modules"
+  local conf="$BH_HOME/apache/httpd.conf"
+  local moddir="/usr/lib/apache2/modules"
+  if [ -d "/usr/lib64/httpd/modules" ]; then
+    moddir="/usr/lib64/httpd/modules"
+  elif [ -d "/etc/httpd/modules" ]; then
+    moddir="/etc/httpd/modules"
+  elif [ -d "/usr/lib/httpd/modules" ]; then
+    moddir="/usr/lib/httpd/modules"
+  fi
   mkdir -p "$BH_HOME/apache/sites" "$BH_HOME/run" "$BH_HOME/logs"
-  local mime="/etc/mime.types"; [ -f "$mime" ] || mime="/etc/apache2/mime.types"
+  local mime="/etc/mime.types"
+  [ -f "$mime" ] || mime="/etc/apache2/mime.types"
+  [ -f "$mime" ] || mime="/etc/httpd/conf/mime.types"
   cat > "$conf" <<APACHE
-# Generated by OmniServ (Linux) — apache2 backend behind nginx. Do not edit by hand.
+# Generated by OmniServ (Linux) — apache backend behind nginx. Do not edit by hand.
 ServerRoot "$BH_HOME/apache"
 Listen 127.0.0.1:$APACHE_PORT
 LoadModule mpm_event_module $moddir/mod_mpm_event.so
@@ -1662,7 +1829,7 @@ APACHE
 eval "$(declare -f probe_version | sed '1s/^probe_version/_bh_shared_probe_version/')"
 probe_version(){
   case "$1" in
-    */apache2)
+    */apache2|*/httpd)
       printf '%s' "$("$1" -v 2>/dev/null | grep -im1 'Apache/')" | tr -d '\n' | cut -c1-46; return ;;
     */lswsctrl|*/lshttpd|*/lsws)
       local v; v="$(head -1 /usr/local/lsws/VERSION 2>/dev/null)"

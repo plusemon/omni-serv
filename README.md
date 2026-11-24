@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%2B%20Intel-black?style=flat-square&logo=apple" alt="macOS">
   <img src="https://img.shields.io/badge/Windows-10%2F11-0078d4?style=flat-square&logo=windows" alt="Windows">
-  <img src="https://img.shields.io/badge/Linux-Ubuntu%20%2F%20Debian-e95420?style=flat-square&logo=ubuntu" alt="Linux">
+  <img src="https://img.shields.io/badge/Linux-Ubuntu%20%2F%20Fedora-e95420?style=flat-square&logo=linux" alt="Linux">
 </p>
 
 <p>
@@ -25,7 +25,7 @@
 |:---:|:---:|:---:|
 | ✅ Stable | ✅ Stable | ✅ Stable |
 | Native menu-bar app | Native WinUI app | GTK4 / libadwaita app |
-| Apple Silicon + Intel | Windows 10 / 11 | Ubuntu / Debian `.deb` |
+| Apple Silicon + Intel | Windows 10 / 11 | Ubuntu / Debian (.deb) & Fedora / RHEL (.rpm) |
 
 <br />
 
@@ -174,24 +174,29 @@ This is **Smart App Control** (Windows 11), not a virus. It blocks unsigned apps
 
 ---
 
-### 🐧 Linux (Ubuntu / Debian)
+### 🐧 Linux (Ubuntu / Debian / Fedora / RHEL)
 
 ```bash
-# Download omniserv_<version>_all.deb from the linux-v* release, then:
+# Ubuntu / Debian (.deb):
 cd ~/Downloads
 sudo dpkg -i ./omniserv_*.deb && sudo apt-get -f install -y
+
+# Fedora / RHEL (.rpm):
+cd ~/Downloads
+sudo dnf install ./omniserv-*.noarch.rpm
+
 omniserv-gui        # or launch "OmniServ" from your apps menu
 ```
 
 Future updates: `omniserv self-update`
 
-**What the `.deb` provides:**
+**What the packages provide:**
 - Engine + a **GTK4 / libadwaita** control panel (same 8 panes as macOS / Windows)
-- Servers installed on demand via `apt` — PHP from the **Ondřej Surý** repo (7.4 → 8.4), plus a portable static build for versions the distro can't provide
+- Servers installed on demand via `apt` (Debian/Ubuntu) or `dnf` (Fedora/RHEL) — PHP from the **Ondřej Surý** repo or system packages, plus portable static builds for versions the distro cannot provide
 - `*.test` resolves via a managed `/etc/hosts` block by default (wildcard dnsmasq is opt-in)
 - Closing the window keeps OmniServ in the **top-bar tray**
 
-Tested on **Ubuntu 24.04 + 26.04 + GNOME**. Full guide → [`linux/README.md`](linux/README.md)
+Tested on **Ubuntu 24.04 + 26.04** and **Fedora 40+**. Full guide → [`linux/README.md`](linux/README.md)
 
 ---
 
@@ -285,7 +290,7 @@ Everything is in this repo:
 |----------|-------|---------------|
 | **macOS** | Bash engine + SwiftUI | `cd macos && ./build-app.sh && ./make-dist.sh` → `.dmg` + `.pkg` |
 | **Windows** | C# / .NET + WinUI | `windows/build.ps1` — see [`windows/README.md`](windows/README.md) |
-| **Linux** | Bash engine + GTK4 / PyGObject | `cd linux && ./build.sh` → `dist/omniserv_<ver>_all.deb` — see [`linux/README.md`](linux/README.md) |
+| **Linux** | Bash engine + GTK4 / PyGObject | `cd linux && ./build.sh` → `.deb` & `.rpm` — see [`linux/README.md`](linux/README.md) |
 
 **Engine** (`engine/omniserv`) is also usable directly:
 

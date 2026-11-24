@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build-linux:
-    name: Build Linux (.deb)
+    name: Build Linux (.deb & .rpm)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -36,18 +36,18 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y dpkg-dev binutils
+          sudo apt-get install -y dpkg-dev binutils rpm
 
-      - name: Build Debian Package
+      - name: Build Linux Packages
         run: |
-          chmod +x linux/build.sh engine/omniserv engine/platform-linux.sh
-          ./linux/build.sh "${{ steps.ver.outputs.version }}"
+          chmod +x linux/build.sh linux/build-rpm.sh engine/omniserv engine/platform-linux.sh
+          ./linux/build.sh "${{ steps.ver.outputs.version }}" --all
 
       - name: Upload Release Artifact
         uses: actions/upload-artifact@v7
         with:
           name: release-linux
-          path: linux/dist/*.deb
+          path: linux/dist/*
           if-no-files-found: error
 
   build-macos:

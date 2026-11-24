@@ -28,32 +28,43 @@ from gi.repository import GLib
 # services actually start at boot as root (a `systemctl --user` unit could never start them —
 # they need :80/:443 + systemctl). No enable/is-enabled mismatch: both the (root) enable and
 # the api's unprivileged `systemctl is-enabled omniserv.service` read the same SYSTEM state.
-_PRIVILEGED = {"install", "update", "uninstall", "start", "stop", "restart",
-               "secure", "unsecure", "resecure", "dns", "helper",
-               "pma", "adminer", "mailpit", "loginitem"}
+_ALWAYS_PRIVILEGED = {"install", "update", "uninstall", "helper",
+                      "pma", "adminer", "loginitem"}
 
 
 def _needs_root(args: tuple, force_root: bool = False) -> bool:
     if not args:
         return False
     if force_root:
-        # Caller knows this run needs root even though the verb is normally unprivileged —
-        # e.g. `site php`/`site subdomain` on an OLS-backed site must resync + reload OLS
-        # ($SUDO cp into /usr/local/lsws/conf + systemctl), which only root can do.
         return True
     v = args[0]
-    if v in _PRIVILEGED:
+    if v in _ALWAYS_PRIVILEGED:
         return True
-    # site add/rm and `site server` all reconfigure + (re)start web servers (nginx/apache/OLS
-    # on :80/:443, systemctl) → need root. `site server` MUST be here: switching an existing
-    # site to OLS runs `_ols_apply` → `sudo systemctl restart lsws`, which has no NOPASSWD rule,
-    # so running it unprivileged blocks the GUI on a hidden password prompt (the "Not Responding"
-    # hang) and never applies. Privileged → pkexec → one prompt → runs as root → applies cleanly,
-    # exactly like `site add … --server ols` (which is why NEW OLS sites already worked).
-    if v == "site" and len(args) > 1 and args[1] in ("add", "rm", "remove", "server"):
+
+    # If the sudoers helper is active, services, sites, SSL, and DNS all run passwordless
+    helper_active = EngineClient.is_helper_active()
+
+    if v in ("start", "stop", "restart"):
+        target = args[1] if len(args) > 1 else "all"
+        # Pure user-space services never need root elevation
+        if target.startswith("php") or target in ("mailpit", "httpd", "apache", "python", "fnm", "composer"):
+            return False
+        if helper_active:
+            return False
         return True
-    if v in ("pysite", "nodesite") and len(args) > 1 and args[1] in ("add", "rm", "remove"):
-        return True
+
+    if v in ("secure", "unsecure", "resecure", "dns"):
+        return not helper_active
+
+    if v in ("site", "pysite", "nodesite") and len(args) > 1 and args[1] in ("add", "rm", "remove"):
+        return not helper_active
+
+    if v == "site" and len(args) > 1 and args[1] == "server":
+        # Switching to OLS touches /usr/local/lsws
+        if len(args) > 3 and args[3] in ("ols", "openlitespeed"):
+            return True
+        return not helper_active
+
     return False
 
 
@@ -82,6 +93,27 @@ class EngineClient:
 
     # ── command construction (elevate privileged verbs) ──────────────────────
     _sudo_nopw: bool | None = None
+    _nginx_helper: bool | None = None
+
+    @classmethod
+    def is_helper_active(cls) -> bool:
+        """True if the sudoers helper for nginx is installed and active. Cached."""
+        if cls._nginx_helper is None:
+            try:
+                cls._nginx_helper = (
+                    shutil.which("sudo") is not None and
+                    (subprocess.run(
+                        ["sudo", "-n", "/usr/sbin/nginx", "-v"],
+                        capture_output=True, timeout=2
+                    ).returncode == 0 or
+                     "NOPASSWD: /usr/sbin/nginx" in subprocess.run(
+                        ["sudo", "-n", "-l"],
+                        capture_output=True, text=True, timeout=2
+                    ).stdout)
+                )
+            except Exception:
+                cls._nginx_helper = False
+        return cls._nginx_helper
 
     def _can_sudo_nopw(self) -> bool:
         """True if `sudo` runs without a password (passwordless sudoers / WSL). Cached."""
@@ -111,6 +143,8 @@ class EngineClient:
     # ── synchronous run (use only for fast verbs like api/status) ────────────
     def run(self, *args: str, timeout: int | None = None,
             env: dict | None = None, force_root: bool = False) -> tuple[int, str]:
+        if args and args[0] == "helper":
+            EngineClient._nginx_helper = None
         try:
             # `env` carries secrets (e.g. OMNISERV_DB_PASSWORD) so they go via the process
             # environment (owner-only /proc/<pid>/environ) instead of argv (world-readable in `ps`).
@@ -125,6 +159,8 @@ class EngineClient:
             # pkexec exit 126 = user dismissed the auth dialog; 127 = not authorized.
             if p.returncode in (126, 127) and _needs_root(args, force_root):
                 return p.returncode, "Cancelled — administrator approval is required for this action."
+            if args and args[0] == "helper":
+                EngineClient._nginx_helper = None
             return p.returncode, _ANSI.sub("", (p.stdout or "") + (p.stderr or ""))
         except subprocess.TimeoutExpired:
             return 1, f"timed out after {timeout}s"
@@ -134,7 +170,10 @@ class EngineClient:
     # ── api JSON snapshot the GUI renders from ───────────────────────────────
     def api(self) -> dict:
         rc, out = self.run("api", timeout=20)
-        return _extract_json(out)
+        data = _extract_json(out)
+        if "helper" in data:
+            EngineClient._nginx_helper = bool(data["helper"])
+        return data
 
     # ── async run for anything slow (install/start/secure/…) ─────────────────
     def run_async(self, args: list[str], on_done: Callable[[int, str], None],

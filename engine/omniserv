@@ -2051,7 +2051,12 @@ db_drop(){
 # A sudoers rule so the GUI/CLI can start/stop/reload nginx (binds :80/:443)
 # without a password prompt — the standard local-dev approach (à la Valet).
 SUDOERS_FILE="/etc/sudoers.d/omniserv"
-helper_installed(){ [ -f "$SUDOERS_FILE" ]; }
+helper_installed(){
+  [ -f "$SUDOERS_FILE" ] 2>/dev/null && return 0
+  command -v sudo >/dev/null 2>&1 && sudo -n -l 2>/dev/null | grep -q "NOPASSWD:.*nginx" && return 0
+  command -v sudo >/dev/null 2>&1 && sudo -n "$(NGINX_BIN)" -v >/dev/null 2>&1 && return 0
+  return 1
+}
 helper_target_user(){ echo "${SUDO_USER:-$(stat -f%Su /dev/console 2>/dev/null)}"; }
 
 cmd_helper(){

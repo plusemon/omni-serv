@@ -1,4 +1,4 @@
-# OmniServ for Linux — Ubuntu / Debian
+# OmniServ for Linux — Ubuntu / Debian / Fedora / RHEL
 
 A free local web server for Linux — the same app, features and sites as the macOS/Windows builds, as a
 **GTK4 / libadwaita** control panel + a `omniserv` CLI. Multiple PHP versions per site, nginx, Apache **&
@@ -22,6 +22,7 @@ OpenLiteSpeed**, MariaDB / MySQL / PostgreSQL, Redis & Memcached, Node & Python 
 
 ## Install
 
+### Ubuntu / Debian (.deb)
 **1. Download the latest `.deb`** from the [**Releases** page](https://github.com/plusemon/OmniServ/releases)
 (the newest **`vX.Y.Z`** release → `omniserv_X.Y.Z_all.deb`), then install it:
 
@@ -31,18 +32,16 @@ sudo dpkg -i ./omniserv_*.deb
 sudo apt-get -f install -y
 ```
 
-Or grab it straight from the terminal (bump the version to the latest release):
+### Fedora / RHEL (.rpm)
+**1. Download the latest `.rpm`** from the [**Releases** page](https://github.com/plusemon/OmniServ/releases)
+(`omniserv-<version>-1.noarch.rpm`), then install it:
 
 ```bash
-cd /tmp
-wget https://github.com/plusemon/OmniServ/releases/download/v1.0.7/omniserv_1.0.7_all.deb
-sudo dpkg -i ./omniserv_1.0.7_all.deb
-sudo apt-get -f install -y
+cd ~/Downloads
+sudo dnf install ./omniserv-*.noarch.rpm
 ```
 
-> The second line pulls in any missing dependencies (only needed on a first install). Use
-> `dpkg -i`, **not** `apt install ./file.deb` — on newer Ubuntu (25.04+/apt 2.9+) the latter fails
-> with *"Unsupported file … given on commandline"*.
+> The package manager pulls in any missing dependencies automatically. Use `sudo dpkg -i` on Ubuntu/Debian or `sudo dnf install` on Fedora/RHEL.
 
 **2. Launch it** — open **“OmniServ”** from your applications menu, or run:
 
@@ -97,7 +96,9 @@ rm -rf ~/.omniserv                # optional: also wipe OmniServ's data (config,
 
 ## Requirements
 
-- A **Debian/Ubuntu**-based distro (uses `apt`). Tested on Ubuntu 24.04 LTS and 26.04.
+- A supported Linux distribution:
+  - **Debian/Ubuntu** (uses `apt`). Tested on Ubuntu 24.04 LTS and 26.04.
+  - **Fedora/RHEL** (uses `dnf` / `rpm`). Tested on Fedora 40+.
 - `sudo` access (OmniServ elevates via `pkexec`/`sudo` only for install + service control).
 - ~200 MB for the app; server binaries add more as you install them.
 
@@ -105,17 +106,16 @@ rm -rf ~/.omniserv                # optional: also wipe OmniServ's data (config,
 
 ## Notes & troubleshooting
 
-- **PHP version not available?** On a brand-new release the Ondřej PPA may not have built yet — OmniServ
+- **PHP version not available?** On a brand-new release the distro or PPA may not have built yet — OmniServ
   falls back to a portable static PHP for 8.0–8.5. PHP **7.4** is end-of-life, so it's only available on
-  an LTS where Ondřej still ships it.
+  an LTS where distro/PPA still ships it.
 - **Native `apt install omniserv`** (a signed apt repo, so `apt upgrade` handles updates) is wired up but
-  **opt-in** — see [`apt-repo/README.md`](apt-repo/README.md) to enable it. Until then, use the `.deb` +
+  **opt-in** — see [`apt-repo/README.md`](apt-repo/README.md) to enable it. Until then, use the `.deb` or `.rpm` +
   `omniserv self-update` above.
 - **No tray icon after closing the window?** The top-bar icon uses GNOME's AppIndicator support, which
   ships enabled on Ubuntu. On a vanilla GNOME desktop, enable the *"AppIndicator and KStatusNotifierItem
   Support"* extension (or install `gnome-shell-extension-appindicator`). Without it, closing the window
   just quits normally.
-- **RHEL / Fedora / openSUSE** (dnf/zypper) aren't supported yet — this build is Debian/Ubuntu (`apt`) only.
 
 ---
 
@@ -123,6 +123,10 @@ rm -rf ~/.omniserv                # optional: also wipe OmniServ's data (config,
 
 The engine is the shared `../engine/omniserv` (bash, same as macOS) plus a Linux delta layer
 (`../engine/platform-linux.sh`, sourced only on Linux — macOS untouched). The GUI is `app/omniserv/`
-(Python + GTK4/libadwaita), driving the engine via its `api` JSON. Build the `.deb` with `build.sh` →
-`dist/omniserv_<ver>_all.deb`. Architecture spec: [`../docs/LINUX-PORT.md`](../docs/LINUX-PORT.md);
+(Python + GTK4/libadwaita), driving the engine via its `api` JSON.
+- Build `.deb`: `./linux/build.sh --deb` → `dist/omniserv_<ver>_all.deb`
+- Build `.rpm`: `./linux/build.sh --rpm` → `dist/omniserv-<ver>-1.noarch.rpm`
+- Build both: `./linux/build.sh --all`
+
+Architecture spec: [`../docs/LINUX-PORT.md`](../docs/LINUX-PORT.md);
 engine deltas: [`engine/DELTAS.md`](engine/DELTAS.md).

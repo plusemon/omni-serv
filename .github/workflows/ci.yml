@@ -35,6 +35,7 @@ jobs:
           bash -n engine/omniserv
           bash -n engine/platform-linux.sh
           bash -n linux/build.sh
+          bash -n linux/build-rpm.sh
           bash -n linux/apt-repo/build-repo.sh
           bash -n macos/build-app.sh
           bash -n macos/make-dist.sh
@@ -42,7 +43,7 @@ jobs:
 
       - name: Run ShellCheck
         run: |
-          shellcheck -S warning -e SC1091,SC2034,SC2154 engine/omniserv engine/platform-linux.sh linux/build.sh || true
+          shellcheck -S warning -e SC1091,SC2034,SC2154 engine/omniserv engine/platform-linux.sh linux/build.sh linux/build-rpm.sh || true
 
       - name: Validate Python Syntax
         run: |
@@ -54,7 +55,7 @@ jobs:
           python3 -c "import yaml, glob; [yaml.safe_load(open(f, 'r', encoding='utf-8')) for f in glob.glob('.github/**/*.yml', recursive=True)]; print('All YAML files are valid.')"
 
   build-linux:
-    name: Build Linux (.deb)
+    name: Build Linux (.deb & .rpm)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -63,25 +64,32 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y dpkg-dev binutils
+          sudo apt-get install -y dpkg-dev binutils rpm
 
-      - name: Build Debian Package
+      - name: Build Linux Packages
         run: |
-          chmod +x linux/build.sh engine/omniserv engine/platform-linux.sh
-          ./linux/build.sh
+          chmod +x linux/build.sh linux/build-rpm.sh engine/omniserv engine/platform-linux.sh
+          ./linux/build.sh --all
 
       - name: Inspect Package
         run: |
           ls -lh linux/dist/
           DEB_FILE=$(find linux/dist -name "*.deb" | head -n 1)
-          dpkg-deb --info "$DEB_FILE"
-          dpkg-deb --contents "$DEB_FILE"
+          if [ -n "$DEB_FILE" ]; then
+            dpkg-deb --info "$DEB_FILE"
+            dpkg-deb --contents "$DEB_FILE"
+          fi
+          RPM_FILE=$(find linux/dist -name "*.rpm" | head -n 1)
+          if [ -n "$RPM_FILE" ]; then
+            rpm -qip "$RPM_FILE"
+            rpm -qlp "$RPM_FILE"
+          fi
 
       - name: Upload Linux Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: omniserv-linux-deb
-          path: linux/dist/*.deb
+          name: omniserv-linux-dist
+          path: linux/dist/*
           if-no-files-found: error
 
   build-macos:

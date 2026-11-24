@@ -1,11 +1,12 @@
 """Self-updater — polls GitHub releases for new versions, compares to
-the running version, and (on request) downloads the .deb and installs it via pkexec apt.
+the running version, and (on request) downloads the .deb / .rpm and installs it via pkexec.
 Mirrors the Windows/Mac updaters, including the ≤1-call-per-30-min throttle for automatic checks.
 """
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import ssl
 import subprocess
 import tempfile
@@ -20,6 +21,29 @@ def _is_github_host(url: str) -> bool:
     """Only ever download/install assets served from GitHub's own hosts."""
     host = (urlparse(url).hostname or "").lower()
     return host == "github.com" or host.endswith(".githubusercontent.com")
+
+
+def is_rpm_distro() -> bool:
+    """Return True if running on an RPM-based distribution (Fedora, RHEL, CentOS, Rocky, etc.)."""
+    try:
+        import platform
+        info = platform.freedesktop_os_release()
+        distro_id = info.get("ID", "").lower()
+        id_like = info.get("ID_LIKE", "").lower()
+        if any(d in distro_id for d in ("fedora", "rhel", "centos", "rocky", "almalinux", "suse")):
+            return True
+        if any(d in id_like for d in ("fedora", "rhel", "centos", "suse")):
+            return True
+    except Exception:
+        pass
+    if os.path.exists("/etc/os-release"):
+        try:
+            with open("/etc/os-release", encoding="utf-8") as f:
+                content = f.read().lower()
+                return any(k in content for k in ("fedora", "rhel", "centos", "rocky", "almalinux"))
+        except Exception:
+            pass
+    return shutil.which("rpm") is not None and shutil.which("dpkg") is None
 
 
 REPO = "plusemon/OmniServ"
@@ -85,22 +109,26 @@ def latest_release() -> tuple[dict | None, str | None]:
 
     if isinstance(data, list):
         best = None
+        target_ext = ".rpm" if is_rpm_distro() else ".deb"
         for rel in data:
             if rel.get("draft"):
                 continue
             tag = rel.get("tag_name", "")
-            # Skip explicit other-platform tags without linux deb assets
+            # Skip explicit other-platform tags without matching linux assets
             if (tag.startswith("win-") or tag.startswith("mac-") or tag.startswith("darwin-")) and not any(
-                a.get("name", "").endswith(".deb") for a in rel.get("assets", [])
+                a.get("name", "").endswith(target_ext) for a in rel.get("assets", [])
             ):
                 continue
             ver = _tag_to_ver(tag)
-            deb = next((a["browser_download_url"] for a in rel.get("assets", [])
-                        if a.get("name", "").endswith(".deb")
+            pkg = next((a["browser_download_url"] for a in rel.get("assets", [])
+                        if a.get("name", "").endswith(target_ext)
                         and _is_github_host(a.get("browser_download_url", ""))), None)
-            if not deb and tag:
-                deb = f"https://github.com/{REPO}/releases/download/{tag}/omniserv_{ver}_all.deb"
-            cand = {"version": ver, "tag": tag, "deb_url": deb, "notes": rel.get("body", "")}
+            if not pkg and tag:
+                if target_ext == ".rpm":
+                    pkg = f"https://github.com/{REPO}/releases/download/{tag}/omniserv-{ver}-1.noarch.rpm"
+                else:
+                    pkg = f"https://github.com/{REPO}/releases/download/{tag}/omniserv_{ver}_all.deb"
+            cand = {"version": ver, "tag": tag, "deb_url": pkg, "package_url": pkg, "notes": rel.get("body", "")}
             if best is None or is_newer(ver, best["version"]):
                 best = cand
         if best:
@@ -115,8 +143,12 @@ def latest_release() -> tuple[dict | None, str | None]:
         if "/tag/" in final_url:
             tag = final_url.split("/tag/")[-1].split("/")[0].split("?")[0]
             ver = _tag_to_ver(tag)
-            deb_url = f"https://github.com/{REPO}/releases/download/{tag}/omniserv_{ver}_all.deb"
-            return {"version": ver, "tag": tag, "deb_url": deb_url, "notes": ""}, None
+            target_ext = ".rpm" if is_rpm_distro() else ".deb"
+            if target_ext == ".rpm":
+                pkg_url = f"https://github.com/{REPO}/releases/download/{tag}/omniserv-{ver}-1.noarch.rpm"
+            else:
+                pkg_url = f"https://github.com/{REPO}/releases/download/{tag}/omniserv_{ver}_all.deb"
+            return {"version": ver, "tag": tag, "deb_url": pkg_url, "package_url": pkg_url, "notes": ""}, None
     except Exception as e:
         return None, api_err or f"Could not reach GitHub: {e}"
 
@@ -146,7 +178,7 @@ def download_and_install(
     on_log=lambda s: None,
     on_progress=None,
 ) -> tuple[bool, str]:
-    """Download the .deb to a temp file and install it with pkexec apt (graphical sudo).
+    """Download the .deb / .rpm to a temp file and install it with pkexec.
     Supports live progress reporting via on_progress(fraction: float, message: str).
     """
     if not _is_github_host(deb_url):
@@ -168,7 +200,8 @@ def download_and_install(
         _notify(0.02, "Connecting to GitHub…")
         ctx = ssl.create_default_context()
         req = urllib.request.Request(deb_url, headers={"User-Agent": "OmniServ-Linux"})
-        fd, path = tempfile.mkstemp(suffix=".deb", prefix="omniserv-")
+        ext = ".rpm" if is_rpm_distro() else ".deb"
+        fd, path = tempfile.mkstemp(suffix=ext, prefix="omniserv-")
         with urllib.request.urlopen(req, timeout=180, context=ctx) as r, os.fdopen(fd, "wb") as f:
             total_hdr = r.headers.get("Content-Length")
             total_bytes = int(total_hdr) if total_hdr and total_hdr.isdigit() else 0
@@ -198,13 +231,12 @@ def download_and_install(
                     _notify(0.35, f"Downloading: {mb_down:.1f} MB…")
 
         _notify(0.75, "Installing package (authentication may be required)…")
-        # pkexec gives a graphical prompt. Install via `dpkg -i` (upgrades in place) then
-        # `apt-get -f install` to pull any new deps — NOT `apt/apt-get install ./file.deb`,
-        # which fails on apt 2.9+ (Ubuntu 25.04+) with "Unsupported file … given on commandline".
-        # Pass the path as $1 so no shell-quoting of the temp path is needed.
-        p = subprocess.run(
-            ["pkexec", "sh", "-c", 'dpkg -i "$1"; apt-get -f install -y', "sh", path],
-            capture_output=True, text=True)
+        # Graphical authentication via pkexec.
+        if is_rpm_distro():
+            cmd = ["pkexec", "dnf", "install", "-y", path]
+        else:
+            cmd = ["pkexec", "sh", "-c", 'dpkg -i "$1"; apt-get -f install -y', "sh", path]
+        p = subprocess.run(cmd, capture_output=True, text=True)
         os.unlink(path) if os.path.exists(path) else None
         if p.returncode == 0:
             _notify(1.0, "Update installed successfully.")

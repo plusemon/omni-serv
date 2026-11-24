@@ -1,16 +1,54 @@
 #!/bin/bash
-# OmniServ for Linux — build the .deb (and, with appimagetool present, the .AppImage).
-# Run on Ubuntu/Debian (or WSL2):  ./linux/build.sh [version]
-# Produces: linux/dist/omniserv_<version>_all.deb
+# OmniServ for Linux — build the package (.deb on Debian/Ubuntu, .rpm on Fedora/RHEL).
+# Run: ./linux/build.sh [version] [--deb | --rpm | --all]
+# Produces: linux/dist/omniserv_<version>_all.deb and/or linux/dist/omniserv-<version>-1.noarch.rpm
 set -euo pipefail
 
-VERSION="${1:-}"
+VERSION=""
+TARGET=""
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+for arg in "$@"; do
+  case "$arg" in
+    --deb) TARGET="deb" ;;
+    --rpm) TARGET="rpm" ;;
+    --all) TARGET="all" ;;
+    -*) echo "Unknown option: $arg" >&2; exit 1 ;;
+    *) [ -z "$VERSION" ] && VERSION="$arg" ;;
+  esac
+done
+
 if [ -z "$VERSION" ]; then
   VERSION="$(grep -oE '__version__ *= *"[^"]+"' "$ROOT/linux/app/omniserv/__init__.py" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
   VERSION="${VERSION:-1.0.0}"
 fi
-echo "▶ Building OmniServ for Linux $VERSION"
+
+# Auto-detect target format if not explicitly requested
+if [ -z "$TARGET" ]; then
+  if grep -qiE 'fedora|rhel|centos|rocky|almalinux' /etc/os-release 2>/dev/null; then
+    TARGET="rpm"
+  elif command -v dpkg-deb >/dev/null 2>&1; then
+    TARGET="deb"
+  elif command -v rpmbuild >/dev/null 2>&1; then
+    TARGET="rpm"
+  else
+    TARGET="deb"
+  fi
+fi
+
+if [ "$TARGET" = "rpm" ]; then
+  exec "$ROOT/linux/build-rpm.sh" "$VERSION"
+fi
+
+if ! command -v dpkg-deb >/dev/null 2>&1; then
+  echo "Error: 'dpkg-deb' is required to build Debian packages." >&2
+  echo "Please install it with:" >&2
+  echo "  Ubuntu / Debian: sudo apt-get install -y dpkg-dev" >&2
+  echo "  Fedora / RHEL:   sudo dnf install -y dpkg" >&2
+  exit 1
+fi
+
+echo "▶ Building OmniServ for Linux (Debian) $VERSION"
 
 DIST="$ROOT/linux/dist"; mkdir -p "$DIST"
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
@@ -160,3 +198,8 @@ echo
 echo "Install / upgrade (use dpkg — 'apt install ./file.deb' fails on apt 2.9+):"
 echo "  sudo dpkg -i $OUT"
 echo "  sudo apt-get -f install -y      # first install only: pulls in deps"
+
+if [ "$TARGET" = "all" ]; then
+  echo
+  "$ROOT/linux/build-rpm.sh" "$VERSION"
+fi

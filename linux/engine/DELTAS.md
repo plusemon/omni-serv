@@ -168,3 +168,13 @@ Linux GTK GUI is also already on master (`linux/app/omniserv/pages.py`: `site_su
 "Manage subdomains…" item + aliases pill; plus PR #2's "Open nginx/Apache config" item). Just build/run
 the GTK app on Ubuntu, do a functional pass (add/list/rm/conflict + HTTPS), and ship `linux-v1.0.x`. Full
 checklist: `docs/WINDOWS-PARITY-TODO.md` §8 (Linux subsection).
+
+## 10. ✅ Fedora / RHEL family support (DNF + RPM) — DONE
+
+`platform-linux.sh` detects the host distribution via `/etc/os-release` (`_distro_id` and `_is_fedora_family`)
+and branches dynamically between Debian/Ubuntu (`apt`, `dpkg`) and Fedora/RHEL (`dnf`, `rpm`):
+- **Package Management:** `_dnf` wraps `dnf -y`; `svc_installed` queries `rpm -q` on Fedora.
+- **Service & Unit Names:** Maps `apache2` → `httpd`, `redis-server` → `redis`, `mariadb-server` / `mysqld`, and `postgresql-server`.
+- **Apache Modules:** Dynamically points `ServerRoot` and modules to `/usr/lib64/httpd/modules` or `/etc/httpd/modules`.
+- **PHP Strategy:** Native Fedora `php-fpm` is used when versions match; multi-version PHP (8.0–8.5) seamlessly uses OmniServ's portable static PHP builds (`_static_php_install`).
+- **Doctor & Self-Update:** Doctor validates `dnf` and `rpm`; self-update installs RPM packages using `dnf install`.
