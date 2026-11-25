@@ -46,8 +46,8 @@ def _needs_root(args: tuple, force_root: bool = False) -> bool:
 
     if v in ("start", "stop", "restart"):
         target = args[1] if len(args) > 1 else "all"
-        # Pure user-space services never need root elevation
-        if target.startswith("php") or target in ("mailpit", "httpd", "apache", "python", "fnm", "composer"):
+        # Pure user-space services never need root elevation (mailpit uses a systemd unit on Linux)
+        if target.startswith("php") or target in ("httpd", "apache", "python", "fnm", "composer"):
             return False
         if helper_active:
             return False

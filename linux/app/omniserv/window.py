@@ -40,6 +40,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.last_data: dict = {}
         self.pages: dict = {}
         self.applog: list = []   # recent verb activity, shown in the Dashboard activity log
+        self._did_autostart = False
 
         self.toast_overlay = Adw.ToastOverlay()
         split = Adw.OverlaySplitView()
@@ -298,6 +299,16 @@ class MainWindow(Adw.ApplicationWindow):
             key = self.stack.get_visible_child_name()
             if key:
                 self._update_header_title(key, data)
+            if not self._did_autostart:
+                self._did_autostart = True
+                if data.get("config", {}).get("autostart"):
+                    svcs = data.get("services", [])
+                    needs_start = any(
+                        s.get("installed") and s.get("enabled") and not s.get("running")
+                        for s in svcs
+                    )
+                    if needs_start or self.engine.is_helper_active():
+                        self.run_verb(["start", "all"], "Starting enabled services…")
         key = self.stack.get_visible_child_name()
         page = self.pages.get(key)
         if page and hasattr(page, "refresh"):
